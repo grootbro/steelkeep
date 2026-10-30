@@ -9,7 +9,7 @@ if(process.env.DEBUG||process.env.PWDEBUG||process.env.NODE_DEBUG||process.argv.
 process.env.PLAYWRIGHT_NO_COPY_PROMPT='1'
 
 export default defineConfig({
-  testDir:'./acceptance/ui',testMatch:'recovery.spec.ts',
+  testDir:'./acceptance/ui',testMatch:['recovery.spec.ts','management.spec.ts'],
   fullyParallel:false,workers:1,retries:0,timeout:300000,
   expect:{timeout:15000},forbidOnly:true,reporter:[['list']],
   outputDir:'./test-results/ui-recovery',

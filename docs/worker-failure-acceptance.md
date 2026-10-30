@@ -1,6 +1,14 @@
 # Local worker failure acceptance
 
-`acceptance/worker-failures.test.ts` is an opt-in integration harness using real REST requests, PostgreSQL 17 native tools, the running local S3 pipeline, and the real Compose worker. Source authoring is not evidence that it passed. It was not run, built or typechecked during authoring.
+`acceptance/worker-failures.test.ts` is an opt-in integration harness using real REST requests, PostgreSQL 17 native tools, the running local S3 pipeline, and the real Compose worker. Root executed it on 31 October 2026: **1 passed, 403 assertions, 42.45 seconds**. The observed checks below were actual runtime checks, not inferred from source.
+
+The run used source `wf_src_7a0c6644ac8e`, target `wf_target_7a0c6644ac8e_1`,
+artifact run `d56eaf7a-052d-413b-907e-b1dbc4ccb8ea`. Queued cancellation stayed at
+attempt 0; running cancellation and interrupted dump/restore stayed at attempt 1.
+The native restore target remained reserved and contained no committed table. The 12-second
+observation window is deliberately narrower than full lease/retry coverage. All resources
+were retained. A later host disk/Docker incident does not establish their current integrity;
+the fixture stack must be checked after environment recovery.
 
 ## Scope and guards
 

@@ -1,8 +1,8 @@
 import {test,expect} from 'bun:test'
 import {randomBytes,randomUUID} from 'node:crypto'
 import {spawn} from 'node:child_process'
-import {readFile,realpath,stat} from 'node:fs/promises'
-import {dirname,join,resolve} from 'node:path'
+import {readFile,realpath,lstat} from 'node:fs/promises'
+import {basename,dirname,join,resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import pg from 'pg'
 
@@ -146,8 +146,10 @@ acceptance('fixed local worker: queued/running cancellation, native dump/restore
     if(process.env.DOCKER_HOST||process.env.DOCKER_CONTEXT)throw new Error('Unset DOCKER_HOST and DOCKER_CONTEXT; only a verified local Unix-socket context is allowed.')
     const context=JSON.parse(await command(['context','inspect','--format','{{json .Endpoints.docker.Host}}'])) as unknown
     if(typeof context!=='string'||!context.startsWith('unix:///'))throw new Error('Worker failure acceptance requires a local Docker Unix socket.')
-    const socketPath=await realpath(context.slice('unix://'.length))
-    if(!(await stat(socketPath)).isSocket())throw new Error('The Docker endpoint is not a local Unix socket.')
+    // Bun on macOS cannot realpath a socket; resolve its parent and require a socket leaf.
+    const requestedSocket=context.slice('unix://'.length)
+    const socketPath=join(await realpath(dirname(requestedSocket)),basename(requestedSocket))
+    if(!(await lstat(socketPath)).isSocket())throw new Error('The Docker endpoint is not a local Unix socket.')
     dockerHost='unix://'+socketPath
     if(!await workerRunning())throw new Error('Start the local worker first; this suite restores only an initially running worker.')
     token=(await readFile(join(workspace,'.steelkeep','token'),'utf8')).trim()

@@ -41,10 +41,13 @@ async function newTarget(admin:MySQL,occupied=false){
   const suffix=randomBytes(6).toString('hex'),database='restore_mysql8_'+suffix,user='restore_m8_'+suffix,password=randomBytes(24).toString('hex')
   // Only generated identifiers/hex passwords are interpolated by this owner
   // harness. No caller-controlled SQL is accepted, and partial targets remain.
+  const [mode]=await admin.query<RowDataPacket[]>("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'")
+  if(mode.length!==1||!['ON','OFF'].includes(String(mode[0].Value)))throw new Error('Cannot verify fixture privilege wildcard mode.')
+  const grantDatabase=mode[0].Value==='ON'?database:database.replace(/[%_]/g,'\\$&')
   try{
     await admin.query(`CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`)
     await admin.query(`CREATE USER '${user}'@'%' IDENTIFIED WITH caching_sha2_password BY '${password}'`)
-    await admin.query(`GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON \`${database}\`.* TO '${user}'@'%'`)
+    await admin.query(`GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON \`${grantDatabase}\`.* TO '${user}'@'%'`)
     if(occupied){
       await admin.query(`CREATE TABLE \`${database}\`.safety_keep(value VARCHAR(40) NOT NULL) ENGINE=InnoDB`)
       await admin.query(`INSERT INTO \`${database}\`.safety_keep(value) VALUES('keep-me')`)
@@ -93,10 +96,10 @@ recovery('MySQL 8.0.46 MCP: real native backup/S3/restore with independent decim
     }
     throw new Error('MySQL fixture operation exceeded its acceptance deadline; no source or target was reset.')
   }
-  async function rejectedInsert(sql:string,parameters:Array<string|Buffer>,expectedCode:string){
+  async function rejectedInsert(sql:string,parameters:Array<string|Buffer>,expectedCode:string|readonly string[]){
     let code=''
     try{await targetDb!.execute(sql,parameters)}catch(error){code=String((error as {code?:unknown}).code??'')}
-    expect(code).toBe(expectedCode)
+    expect(typeof expectedCode==='string'?[expectedCode]:expectedCode).toContain(code)
   }
   try{
     admin=await mysqlConnection('source_mysql8','root','local-mysql8-admin-only')
@@ -151,9 +154,13 @@ recovery('MySQL 8.0.46 MCP: real native backup/S3/restore with independent decim
     const targetConfig=await newTarget(admin),target=await post<{id:string}>('/connections',targetConfig)
     targetDb=await mysqlConnection(targetConfig.database,targetConfig.user,targetConfig.password)
     const [grants]=await targetDb.query<RowDataPacket[]>('SHOW GRANTS FOR CURRENT_USER()')
+    const [mode]=await targetDb.query<RowDataPacket[]>("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'")
+    expect(mode.length).toBe(1)
+    expect(['ON','OFF'].includes(String(mode[0].Value))).toBe(true)
+    const grantDatabase=mode[0].Value==='ON'?targetConfig.database:targetConfig.database.replace(/[%_]/g,'\\$&')
     expect(grants.every(row=>{
       const grant=String(Object.values(row)[0])
-      return !/\bDROP\b|WITH GRANT OPTION/i.test(grant)&&(/^GRANT USAGE ON \*\.\* TO /.test(grant)||grant.includes('ON `'+targetConfig.database+'`.* TO '))
+      return !/\bDROP\b|WITH GRANT OPTION/i.test(grant)&&(/^GRANT USAGE ON \*\.\* TO /.test(grant)||grant.match(/^GRANT [A-Z ,]+ ON (`(?:``|[^`])+`\.\*) TO /)?.[1]==='`'+grantDatabase+'`.*')
     })).toBe(true)
     const prepared=await tool<{intentId:string;review:{sourceDatabase:string;targetDatabase:string;checks:Record<string,boolean>}}>('prepare_restore',{artifactId:artifact.id,targetId:target.id})
     expect(prepared.review.sourceDatabase).toBe('source_mysql8')
@@ -179,7 +186,7 @@ recovery('MySQL 8.0.46 MCP: real native backup/S3/restore with independent decim
     expect(Number(next.insertId)).toBe(51)
     await rejectedInsert('INSERT INTO projects(name) VALUES(?)',['Synthetic MySQL 8 fixture'],'ER_DUP_ENTRY')
     const insert='INSERT INTO entries(project_id,external_id,body,amount,binary_value,payload,created_at) VALUES(?,?,?,?,?,?,?)'
-    await rejectedInsert(insert,['999999','42','Synthetic invalid FK','1.0000',Buffer.from([0]),JSON.stringify({label:'negative-fixture'}),'2026-01-01 00:00:00.000000'],'ER_NO_REFERENCED_ROW_2')
+    await rejectedInsert(insert,['999999','42','Synthetic invalid FK','1.0000',Buffer.from([0]),JSON.stringify({label:'negative-fixture'}),'2026-01-01 00:00:00.000000'],['ER_NO_REFERENCED_ROW','ER_NO_REFERENCED_ROW_2'])
     await rejectedInsert(insert,['1','43','Synthetic invalid CHECK','-1.0000',Buffer.from([0]),JSON.stringify({label:'negative-fixture'}),'2026-01-01 00:00:00.000000'],'ER_CHECK_CONSTRAINT_VIOLATED')
     await rejectedInsert(insert,['1','44','Synthetic invalid JSON shape','1.0000',Buffer.from([0]),JSON.stringify(['not-an-object']),'2026-01-01 00:00:00.000000'],'ER_CHECK_CONSTRAINT_VIOLATED')
     expect(await rows(admin)).toEqual(before)

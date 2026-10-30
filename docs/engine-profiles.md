@@ -33,6 +33,24 @@ provisioning. The ARM64 Ubuntu image built and runs the development API/worker;
 clean immutable self-hosted delivery and amd64 acceptance remain pending. See
 [native tooling](native-tooling.md) for package provenance and remaining checks.
 
+
+MySQL/MariaDB restore grants must address the literal target database: for example,
+
+```sql
+GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON `restore\_one`.* TO ...;
+```
+
+Backtick quoting alone does not escape `_` or `%` in database-level grants. Escape
+these characters with a backslash on MariaDB and MySQL with `partial_revokes=OFF`.
+MySQL with verified `partial_revokes=ON` also accepts the raw literal database name.
+An unavailable or unrecognized MySQL mode is refused. See the
+[MySQL GRANT reference](https://dev.mysql.com/doc/refman/8.0/en/grant.html).
+Existing wildcard target roles are now refused; updating fixture source does not
+change existing accounts or volumes. The owner must review their privileges or
+provision a fresh correctly scoped target. Global privileges (apart from USAGE),
+other database grants, inherited roles and GRANT OPTION remain disallowed.
+
+
 ## SQL Server optional helper
 
 Source: `tools/Steelkeep.DacFx`. Its project pins Microsoft.SqlServer.DacFx 170.5.96.

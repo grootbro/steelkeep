@@ -17,6 +17,47 @@ export const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(
 const fail=(code:string,message:string):never=>{throw new AppError(code,message)}
 const checkSignal=(signal?:AbortSignal)=>{if(signal?.aborted)fail('CANCELLED','Operation cancelled.')}
 
+// SHOW GRANTS database scopes are patterns even when backtick-quoted.
+export function mysqlGrantScope(statement:string,partialRevokes:boolean){
+  const match=statement.match(/^GRANT ([A-Z ,]+) ON (\*\.\*|`(?:``|[^`])+`\.\*) TO .+$/i)
+  if(!match)return null
+  const grantOption=/\bWITH\s+GRANT\s+OPTION\b/i.test(statement)
+  const permissions=match[1].split(',').map(value=>value.trim().toUpperCase())
+  if(permissions.some(value=>!value))return null
+  if(match[2]==='*.*')return {permissions,grantOption,global:true,database:'',wildcard:false}
+  const pattern=match[2].slice(1,-3).replaceAll('``','`')
+  let database='',wildcard=false
+  for(let i=0;i<pattern.length;i++){
+    const char=pattern[i]
+    if(char==='\\'){
+      const next=pattern[++i]
+      if(next!=='_'&&next!=='%'&&next!=='\\')return null
+      database+=next
+    }else{
+      if(!partialRevokes&&(char==='_'||char==='%'))wildcard=true
+      database+=char
+    }
+  }
+  return {permissions,grantOption,global:false,database,wildcard}
+}
+export function mysqlRestoreGrantsSafe(statements:readonly string[],database:string,partialRevokes:boolean){
+  return statements.length>0&&statements.every(statement=>{
+    const scope=mysqlGrantScope(statement,partialRevokes)
+    return scope!==null&&!scope.grantOption&&(scope.global?scope.permissions.length===1&&scope.permissions[0]==='USAGE':!scope.wildcard&&scope.database===database)
+  })
+}
+export function mysqlMetadataPermissions(statements:readonly string[],database:string,partialRevokes:boolean){
+  const permissions=new Set<string>()
+  for(const statement of statements){
+    const scope=mysqlGrantScope(statement,partialRevokes)
+    // Broader source read rights are allowed; this exact pattern also covers the actual name.
+    if(!scope||(!scope.global&&scope.database!==database))continue
+    if(scope.permissions.includes('ALL PRIVILEGES'))return true
+    for(const permission of scope.permissions)permissions.add(permission)
+  }
+  return ['SELECT','SHOW VIEW','TRIGGER','EVENT','EXECUTE'].every(permission=>permissions.has(permission))
+}
+
 export function metadataDatabase(){
   try{
     const name=decodeURIComponent(new URL(installation.databaseUrl()).pathname.slice(1))
@@ -130,24 +171,30 @@ export class DatabaseSession {
       if(!schema.can_create)fail('TARGET_PERMISSIONS','The dedicated restore role needs CREATE on the empty target public schema.')
       return
     }
-    const grants=await this.query('SHOW GRANTS FOR CURRENT_USER()')
-    const target='ON '+myName(this.config.database)+'.* TO '
-    for(const grant of grants){
-      const statement=String(Object.values(grant)[0])
-      if(statement.includes('WITH GRANT OPTION')||!(/^GRANT USAGE ON \*\.\* TO /.test(statement)||statement.includes(target)))fail('UNSAFE_TARGET_ROLE','Use a dedicated restore role with privileges only on the selected target database and no grant option or inherited roles.')
-    }
-    await this.sourceMetadataVisibility()
+    const partialRevokes=await this.mysqlPartialRevokes(),grants=await this.mysqlGrants()
+    if(!mysqlRestoreGrantsSafe(grants,this.config.database,partialRevokes))fail('UNSAFE_TARGET_ROLE','Use a dedicated restore role with literal privileges only on the selected target database and no grant option or inherited roles. Escape database wildcard characters when partial_revokes is off.')
+    if(!mysqlMetadataPermissions(grants,this.config.database,partialRevokes))fail('DATABASE_METADATA_PERMISSIONS','The account needs SELECT, SHOW VIEW, TRIGGER, EVENT and EXECUTE on this database so existing schema objects cannot be silently hidden.')
+  }
+  private async mysqlPartialRevokes(){
+    if(this.engine==='mariadb')return false
+    // SHOW is valid before MySQL introduced this variable; absence is not guessed OFF.
+    const rows=await this.query("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'")
+    const value=rows.length===1?rows[0].Value:undefined
+    if(value==='ON')return true
+    if(value==='OFF')return false
+    return fail('GRANT_SCOPE_UNCERTAIN','The MySQL database grant wildcard mode could not be verified.')
+  }
+  private async mysqlGrants(){
+    const rows=await this.query('SHOW GRANTS FOR CURRENT_USER()')
+    return rows.map(row=>{
+      const values=Object.values(row)
+      if(values.length!==1||typeof values[0]!=='string')return fail('GRANT_SCOPE_UNCERTAIN','Database privileges could not be verified.')
+      return values[0]
+    })
   }
   async sourceMetadataVisibility(){
     if(this.engine==='postgres')return
-    const grants=await this.query('SHOW GRANTS FOR CURRENT_USER()'),permissions=new Set<string>()
-    for(const row of grants){
-      const match=String(Object.values(row)[0]).match(/^GRANT (.+) ON (.+) TO /)
-      if(!match||!['*.*',myName(this.config.database)+'.*'].includes(match[2]))continue
-      if(match[1]==='ALL PRIVILEGES')return
-      for(const permission of match[1].split(','))permissions.add(permission.trim())
-    }
-    if(['SELECT','SHOW VIEW','TRIGGER','EVENT','EXECUTE'].some(p=>!permissions.has(p)))fail('DATABASE_METADATA_PERMISSIONS','The account needs SELECT, SHOW VIEW, TRIGGER, EVENT and EXECUTE on this database so existing schema objects cannot be silently hidden.')
+    if(!mysqlMetadataPermissions(await this.mysqlGrants(),this.config.database,await this.mysqlPartialRevokes()))fail('DATABASE_METADATA_PERMISSIONS','The account needs SELECT, SHOW VIEW, TRIGGER, EVENT and EXECUTE on this database so existing schema objects cannot be silently hidden.')
   }
   async manifest():Promise<Manifest>{
     const identity=await this.identity()
@@ -242,7 +289,8 @@ export async function nativeCredentials(engine:Engine,c:DatabaseConfig,s:DbSecre
   const path=join(dir,'client.cnf'),escape=(v:string)=>'"'+v.replaceAll('\\','\\\\').replaceAll('"','\\"')+'"'
   const transport=engine==='mysql'?`ssl-mode=${c.tls?'VERIFY_IDENTITY':'DISABLED'}${c.tls?'':'\nget-server-public-key=TRUE'}`:`ssl=${c.tls?'true':'false'}\nssl-verify-server-cert=${c.tls?'true':'false'}`
   await writeFile(path,`[client]\nhost=${escape(c.host)}\nport=${c.port}\nuser=${escape(c.user)}\npassword=${escape(s.password)}\nprotocol=tcp\n${transport}\n`,{mode:0o600,flag:'wx'})
-  return {env:toolEnv(),args:[`--defaults-file=${path}`,...(engine==='mysql'?['--no-login-paths']:[])]}
+  // MySQL8's dump binary lacks --no-login-paths; isolate its documented login-file lookup.
+  return {env:toolEnv(engine==='mysql'?{MYSQL_TEST_LOGIN_FILE:join(dir,'unused-login.cnf')}:{}),args:[`--defaults-file=${path}`]}
 }
 
 export async function nativeVersion(engine:Engine,signal:AbortSignal){

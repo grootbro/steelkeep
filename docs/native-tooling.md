@@ -92,8 +92,20 @@ also passed. The subsequent real UI recovery suite passed PostgreSQL/MariaDB (2/
 including independent S3 GET/SHA and SQL assertions. Those results are recorded by the primary
 executor, not rerun by this docs edit.
 
-Remaining qualification: amd64 image build; clean immutable self-hosted delivery; exact native
-recovery for MySQL/MongoDB/SQLite/Redis/ClickHouse; provisioned SQL Server helper; remaining engine UI
-recovery and broad responsive/accessibility review; deliberate lock interruption, restart
-and cancellation tests. SQLite mount permissions and ClickHouse shared-spool behavior need their own runs. Existing fixture volumes
-and successful/partial restore targets are preserved.
+MongoDB8.0.34/Tools100.20, Redis7.4.12 and SQLite subsequently passed native recovery;
+see the acceptance ledger for exact assertions and Linux live-WAL fixture limits.
+Worker cancellation/SIGKILL/restart passed its first PostgreSQL native harness (403 assertions),
+with a bounded no-replay window; other fault boundaries still need checks.
+
+The Linux-x64 DacFx helper compiled through `Dockerfile.mssql --target helper` under local
+amd64 emulation. The first restore warned about transitive Pkcs9.0.11; an explicit9.0.21
+reference removed both NuGet advisory warnings on the next compile. That compile succeeded,
+but exporting its image failed with Docker storage I/O errors when the host disk filled.
+The recipe now removes NuGet/build caches from that stage; this last recipe edit is unbuilt.
+Neither compilation nor emulation qualifies SQL Server runtime: Microsoft requires Intel/AMD
+x64 Linux for supported containers ([support policy](https://learn.microsoft.com/en-us/sql/linux/install-upgrade/setup)).
+
+Remaining qualification: amd64 worker image, clean immutable self-hosted delivery, complete
+MySQL/ClickHouse recovery, SQL Server runtime on an actual x64 runner, remaining engine UI
+and responsive/accessibility review, and broader adverse cases. No volume or restore target
+was deleted. The current host disk/Docker incident requires fixture integrity checks on recovery.

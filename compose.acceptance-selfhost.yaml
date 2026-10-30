@@ -1,0 +1,48 @@
+# Local packaged proof overlay for compose.selfhost.yaml. Compose >=2.24.4.
+# Build/run only by the owner, after guarded secret preparation. No source mounts.
+name: steelkeep-proof
+services:
+  database:
+    ports: !override ["127.0.0.1:54381:5432"]
+    volumes: !override
+      - metadata:/var/lib/postgresql/data
+      - ./.steelkeep/selfhost-proof/metadata-password:/run/steelkeep/metadata-password:ro
+    networks: [default]
+  migrate:
+    image: steelkeep-proof-web:local
+    environment: &proof_environment
+      STEELKEEP_DATABASE_PASSWORD_FILE: /run/steelkeep/metadata-password
+      STEELKEEP_DATABASE_HOST: database
+      STEELKEEP_KEY_FILE: /run/steelkeep/key
+      STEELKEEP_TOKEN_FILE: /run/steelkeep/token
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3
+      STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4312,http://localhost:4312
+      STEELKEEP_PUBLIC_HOSTS: localhost,127.0.0.1
+      STEELKEEP_SECURE_COOKIE: "false"
+      HOST: 0.0.0.0
+      PORT: "4312"
+    volumes: !override
+      - ./.steelkeep/selfhost-proof:/run/steelkeep:ro
+    networks: [default]
+  web:
+    image: steelkeep-proof-web:local
+    environment: *proof_environment
+    ports: !override ["127.0.0.1:4312:4312"]
+    volumes: !override
+      - ./.steelkeep/selfhost-proof:/run/steelkeep:ro
+    networks: [default,fixtures]
+  worker:
+    image: steelkeep-proof-worker:local
+    environment: *proof_environment
+    volumes: !override
+      - ./.steelkeep/selfhost-proof:/run/steelkeep:ro
+    networks: [default,fixtures]
+volumes:
+  metadata:
+    name: steelkeep-proof_metadata
+networks:
+  default:
+    internal: true
+  fixtures:
+    external: true
+    name: steelkeep_default

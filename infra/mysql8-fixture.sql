@@ -39,9 +39,9 @@ CREATE USER 'backup_reader'@'%' IDENTIFIED WITH caching_sha2_password BY 'local-
 CREATE USER 'restore_writer'@'%' IDENTIFIED WITH caching_sha2_password BY 'local-mysql8-writer-only';
 -- Metadata visibility prevents hidden unsupported routines/views from being
 -- mistaken for absence. The worker never calls application routines.
-GRANT SELECT, SHOW VIEW, TRIGGER, EVENT, EXECUTE ON source_mysql8.* TO 'backup_reader'@'%';
+GRANT SELECT, SHOW VIEW, TRIGGER, EVENT, EXECUTE ON `source\_mysql8`.* TO 'backup_reader'@'%';
 -- Explicit source opt-in is also required by the application before FTWRL.
 GRANT RELOAD ON *.* TO 'backup_reader'@'%';
 -- Target privileges stay inside the already created empty target. No global
 -- privilege, DROP, CREATE USER, CREATE DATABASE, GRANT OPTION or role inheritance.
-GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON restore_mysql8.* TO 'restore_writer'@'%';
+GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON `restore\_mysql8`.* TO 'restore_writer'@'%';

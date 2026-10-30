@@ -22,7 +22,7 @@ async function fixtureTarget(engine:'postgres'|'mariadb'){
     try{
       await admin.query(`CREATE DATABASE \`${database}\``)
       await admin.query(`CREATE USER '${user}'@'%' IDENTIFIED BY '${password}'`)
-      await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES, CREATE VIEW, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON \`${database}\`.* TO '${user}'@'%'`)
+      await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES, CREATE VIEW, SHOW VIEW, TRIGGER, EVENT, EXECUTE, LOCK TABLES ON \`${database.replace(/[%_]/g,'\\$&')}\`.* TO '${user}'@'%'`)
     }finally{await admin.end()}
   }
   return {name:`Acceptance ${engine} ${suffix}`,kind:engine,host:engine==='postgres'?'fixture':'mysql-fixture',port:engine==='postgres'?5432:3306,database,user,password,tls:false,restoreTarget:true}

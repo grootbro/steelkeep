@@ -1,13 +1,15 @@
 # Optional, explicit Linux x64 extension. Building this recipe downloads Microsoft
 # packages under their own terms; it is not selected by default Compose.
-# Source-only recipe: no build or package restore has been performed.
+# Compile/package evidence and remaining runtime gates: docs/native-tooling.md.
 ARG ENGINE_IMAGE=steelkeep-engines:local
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS helper
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
 WORKDIR /source
 COPY tools/Steelkeep.DacFx ./
-RUN dotnet publish Steelkeep.DacFx.csproj --configuration Release --runtime linux-x64 --self-contained false --output /published
+RUN dotnet publish Steelkeep.DacFx.csproj --configuration Release --runtime linux-x64 --self-contained false --output /published \
+    && dotnet nuget locals all --clear \
+    && rm -rf bin obj
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
 

@@ -1,5 +1,51 @@
 # Acceptance ledger
 
+## Current environment incident · 31 October 2026
+
+After the worker-failure pass, MySQL native recovery and C# compilation made progress,
+then the host filesystem reached 498 MiB free. Docker image export/extraction returned
+input/output errors; the Docker Unix API stopped responding, including a 4-second `/_ping`
+probe. No further Docker builds or native recovery runs are being started.
+Root removed only the full Chromium1248 download installed during this task (366 MiB),
+retaining the headless browser. Host free space remained below 1 GiB. No user files,
+Docker volumes or database history were deleted, and Docker Desktop was not restarted.
+The owner was asked to free 5–10 GiB and whether a global Docker restart is permitted,
+because that can affect containers outside Steelkeep. Current fixture/data health cannot
+be inferred from the earlier passes and must be rechecked after environment recovery.
+
+New directly observed results before the incident:
+
+- `acceptance/worker-failures.test.ts`: 1 passed, 403 assertions, 42.45 s; actual native
+  cancellation, SIGKILL dump/restore, restart quarantine, retained target block and no replay
+  for 12 seconds. It does not prove partial committed writes or the entire lease interval.
+- MySQL8.0.46: native dump/upload/download/restore and manifest/independent data checks
+  completed, then the harness stopped on the FK error-code assertion (1216 vs1452).
+  Both are FK rejection codes; the assertion now recognizes both. A full passing rerun
+  is still missing. The unsupported Ubuntu mysqldump `--no-login-paths` flag was replaced
+  with a private `MYSQL_TEST_LOGIN_FILE` lookup, preserving option-file isolation.
+- UI management: connection lifecycle scenario passed in8.2 s (real secret retention,
+  rotation/check failure/recovery, stale revision/reload, protected/unused removal).
+  AI-agent scenario found missing initial field focus; Modal now focuses the first enabled
+  form control after opening. Revalidation was blocked by Docker failure. Agent-management
+  flow and the focus change remain unaccepted.
+- C# helper compile succeeded; Pkcs9.0.21 override compiled without the earlier advisories.
+  Updated image export and actual SQL Server runtime remain unproven.
+- Isolated packaged proof source is prepared (ports4312/54381, distinct metadata/keys,
+  no app source mounts). Its filesystem-only setup ran twice and retained private0600
+  material; no proof image/stack/recovery has run.
+
+During the Docker outage, the SQL grant guard was tightened: backtick quoting does not
+make `_`/`%` literal database-grant characters. Restore rejects wildcard scopes unless
+escaping or verified MySQL `partial_revokes=ON` proves an exact scope; ambiguous mode
+is refused. Source metadata checks recognize the corresponding exact grants. Fresh
+fixture-role authoring was updated without editing any live role/database. Four pure
+regression tests passed40 assertions; the complete unit suite now passes22 tests /
+108 assertions. Native MySQL/MariaDB recovery must be repeated against this changed
+guard and freshly prepared exact-scope roles after Docker recovery. Earlier passes
+are not proof of this later source revision. Application and acceptance typechecks pass.
+
+The execution record below is historical evidence from the observed earlier checkout.
+
 31 October 2026. The owner authorized local install, build/checks and isolated fixture
 services to provide a working preview. The full eight-engine goal remains active.
 
@@ -16,7 +62,7 @@ Results apply to that checkout and fixture environment; later source changes nee
 | Base Compose stack | PostgreSQL 17, MariaDB 11 and RustFS healthy | Isolated synthetic services |
 | Metadata migration | Through version 6 passed | Revision-aware connection schema included |
 | `bun run typecheck` and `bun run build` | Passed | Current local application source |
-| `bun run test` | Latest 18 tests, 68 assertions passed | Unit coverage; not native recovery |
+| `bun run test` | Latest 22 tests, 108 assertions passed | Unit coverage; not native recovery |
 | `bun run typecheck:acceptance` | Passed | Acceptance harnesses, Playwright config and setup scripts included |
 | `bun run test:integration` | 34 tests, 209 assertions passed | Guarded metadata/API/MCP contracts, credentials, connection lifecycle and mocked HEAD observations |
 | `Dockerfile.engines` | Ubuntu native ARM64 worker image built | Package resolution/build; not an amd64 or eight-engine runtime pass |

@@ -18,7 +18,7 @@ Root integrates subagents with disjoint boundaries: src/design, native engines/r
 application API/MCP/schema/scheduler; root owns worker/deployment/docs and final contracts.
 
 Implementation and local review started 31 October 2026. Frozen install, preserved key/token
-setup, migration 6, typecheck and build passed. The executor recorded latest 18 unit tests / 68
+setup, migration 6, typecheck and build passed. The executor recorded latest 22 unit tests / 108
 assertions and 34 guarded integration tests / 209 assertions passed. The ARM64 Ubuntu worker
 image built; the running Docker API/worker use fresh source bind mounts. This is development
 runtime evidence, not clean immutable self-hosted delivery.

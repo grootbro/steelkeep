@@ -2,7 +2,9 @@
 
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
 
-**In development; a local preview is available at [127.0.0.1:4310](http://127.0.0.1:4310).**
+**In development. Local preview address: [127.0.0.1:4310](http://127.0.0.1:4310).**
+Current environment incident: Docker is unresponsive after host disk exhaustion; the
+API/fixtures need recovery before this address is usable again. See the acceptance ledger.
 The authorized local review on 31 October 2026 passed native PostgreSQL 17 and MariaDB 11
 backup/restore through MCP, plus build/typecheck and targeted tests. The full eight-engine
 acceptance goal remains open. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
@@ -112,7 +114,7 @@ Retention that deletes user backups is outside the current scope.
 
 The 31 October local execution record includes a successful frozen install, preserved setup
 key/token, healthy PostgreSQL/MariaDB/RustFS fixtures, migration 6, typecheck and build.
-`bun run test` most recently passed **18 tests / 68 assertions**; `bun run test:integration` passed
+`bun run test` most recently passed **22 tests / 108 assertions**; `bun run test:integration` passed
 **34 tests / 209 assertions**. HEAD classifications in the latter use mocked provider
 responses and are not data-recovery proof.
 
