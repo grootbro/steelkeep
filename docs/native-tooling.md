@@ -1,6 +1,6 @@
 # Native worker tooling
 
-Status: **ARM64 image built and used for local PostgreSQL/MariaDB recovery, 31 October 2026**.
+Status: **ARM64 development image built; seven ordinary native recovery profiles verified, 31 October 2026**.
 The primary executor observed the Ubuntu `Dockerfile.engines` build and running development
 API/worker. Current `server`/`shared` source is bind-mounted into those containers. This does
 not prove a clean immutable self-hosted image, amd64 delivery or recovery for every packaged
@@ -22,7 +22,10 @@ The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the offici
 | ClickHouse | Existing HTTP adapter and server-native backup | Explicit maintenance assertion and matching shared backup-disk mounts; no CLI required |
 | SQL Server | Helper source included, **no .NET/DacFx binaries** | Explicitly provisioned Linux x64 extension described below |
 
-PostgreSQL 17 and MariaDB 11 passed real local native MCP recovery with this development runtime. MySQL, MongoDB, SQLite, Redis, ClickHouse and SQL Server recovery remain pending. A successful image build or packaged client does not establish additional server-version, schema or consistency support.
+PostgreSQL 17, MariaDB 11, MongoDB 8.0.34/Tools100.20, Redis 7.4.12 and SQLite passed
+real local native MCP recovery with this development runtime. Post-restart MySQL 8.0.46
+passed 1 test / 63 assertions; ClickHouse 25.8.12 passed 1 test / 20 assertions.
+SQL Server runtime remains pending on a supported nonproduction physical x64 Linux runner. A successful image build or packaged client does not establish additional server-version, schema or consistency support.
 
 ## Coexisting MySQL and MariaDB
 
@@ -88,8 +91,9 @@ Development Compose selects `Dockerfile.engines`; self-hosted Compose builds a s
 Recorded local execution: the ARM64 Ubuntu worker built, Docker API/worker started with
 current source mounts, and PostgreSQL 17/MariaDB 11 passed the native MCP recovery rerun
 (27 assertions). Install, schema migration, typecheck, application build and targeted tests
-also passed. The subsequent real UI recovery suite passed PostgreSQL/MariaDB (2/2, 28.5 s),
-including independent S3 GET/SHA and SQL assertions. Those results are recorded by the primary
+also passed. The latest full Playwright group passed 4/4 in 36.4s, including PostgreSQL/MariaDB
+recovery with independent S3 GET/SHA and SQL assertions, connection lifecycle and agent
+issuance/scopes/revocation. Those results are recorded by the primary
 executor, not rerun by this docs edit.
 
 MongoDB8.0.34/Tools100.20, Redis7.4.12 and SQLite subsequently passed native recovery;
@@ -105,7 +109,14 @@ The recipe now removes NuGet/build caches from that stage; this last recipe edit
 Neither compilation nor emulation qualifies SQL Server runtime: Microsoft requires Intel/AMD
 x64 Linux for supported containers ([support policy](https://learn.microsoft.com/en-us/sql/linux/install-upgrade/setup)).
 
-Remaining qualification: amd64 worker image, clean immutable self-hosted delivery, complete
-MySQL/ClickHouse recovery, SQL Server runtime on an actual x64 runner, remaining engine UI
-and responsive/accessibility review, and broader adverse cases. No volume or restore target
-was deleted. The current host disk/Docker incident requires fixture integrity checks on recovery.
+Docker recovered after an owner-approved restart, preserving existing volumes; metadata
+amcheck, decryption of all 46 stored secrets and full bytes/SHA checks for 19 existing S3
+objects passed. MySQL 8.0.46 and ClickHouse 25.8.12 ordinary recovery subsequently passed
+as recorded above. Permanent S3 failures and bounded retry after stopping/restarting only
+the same fixture RustFS container also passed; the full fault matrix remains open.
+The packaged web image has built successfully; the separate worker image was still building.
+
+Remaining qualification: amd64 worker delivery, clean immutable self-hosted stack/recovery,
+SQL Server runtime on an actual nonproduction x64 runner with operator EULA acceptance,
+remaining engine UI and responsive/accessibility review, and broader adverse cases.
+No volume or restore target was deleted.

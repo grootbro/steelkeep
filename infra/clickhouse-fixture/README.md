@@ -1,12 +1,13 @@
-# Synthetic ClickHouse fixture — authored, not executed
+# Synthetic ClickHouse fixture
 
-This overlay is deliberately opt-in and has no production endpoints. The image
-is pinned to the adapter's ClickHouse 25.8 LTS patch profile. Image availability,
-platform support, grant representation and actual recovery still need runtime
-acceptance; no container, build, test or provisioning command was run while
-authoring this slice.
+Recorded execution on 31 October 2026: ClickHouse25.8.12 native MCP recovery passed
+**1 test / 20 assertions** after the owner-approved Docker restart. The isolated overlay,
+server, shared spool and native backup/restore pipeline were actually used. Independent
+checks cover the data/types and ordered Native-format comparison described below.
+Existing volumes, targets and history were preserved. This is ordinary profile recovery
+evidence; cancellation/crash/restart uncertainty and clean packaged delivery remain open.
 
-When the user authorizes execution, use the base `compose.yaml` together with
+For a separate authorized repeat, use the base `compose.yaml` together with
 `compose.clickhouse-fixture.yaml`. Set `STEELKEEP_UID` and `STEELKEEP_GID` to the
 current non-root host UID/GID consistently for provisioning and Compose. Set
 `STEELKEEP_ACCEPTANCE=synthetic-local-clickhouse`, then explicitly invoke

@@ -1,6 +1,10 @@
 # Независимая fixture MySQL 8.0.46
 
-Статус на 2026-10-31: написаны Compose overlay, SQL fixture, seed и MCP acceptance. Они **не запускались**. Образ не скачивался, worker не собирался, SQL и TypeScript не исполнялись. MariaDB fixture на порту 54375 не является доказательством работы этого профиля.
+Статус на 2026-10-31: после восстановления Docker полный native MCP acceptance
+MySQL8.0.46 прошёл: **1 test / 63 assertions**. Проверены dump → S3 GET/SHA-256 →
+отдельная свежая target database, manifest и независимые данные/schema/constraints/
+auto-increment. Это самостоятельное доказательство профиля MySQL, не результат MariaDB.
+Volumes и прежние targets сохранены. Docker был перезапущен с разрешения владельца.
 
 ## Версии и границы
 
@@ -10,7 +14,7 @@
 sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
 ```
 
-2026-10-31 прочитаны только [метаданные Docker Hub](https://hub.docker.com/v2/repositories/library/mysql/tags/8.0.46/): tag активен, перечислены Linux amd64 и arm64/v8; последнее обновление tag — 2026-05-05. Это проверка метаданных, а не скачанного образа или работающего сервера. Oracle публикует [release notes MySQL 8.0.46 от 2026-04-21](https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-46.html).
+2026-10-31 прочитаны только [метаданные Docker Hub](https://hub.docker.com/v2/repositories/library/mysql/tags/8.0.46/): tag активен, перечислены Linux amd64 и arm64/v8; последнее обновление tag — 2026-05-05. Это была только проверка метаданных на этапе авторинга; позднее точный сервер и native pipeline проверены выполненным acceptance выше. Oracle публикует [release notes MySQL 8.0.46 от 2026-04-21](https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-46.html).
 
 Worker recipe проекта предусматривает собственные MySQL `mysqldump`/`mysql` версии `8.0.46-0ubuntu0.24.04.4` из Ubuntu 24.04. Acceptance проверяет фактические строки версий сервера, dump и restore, а также отсутствие `MariaDB` в версиях инструментов. Переход на MySQL 8.4/9.x или MariaDB требует отдельного профиля и доказательств. Полный случай преднамеренной подмены клиента MariaDB отдельным worker здесь не реализован; неправильный клиент должен привести к отказу основного сценария, а не к его пропуску.
 
@@ -29,9 +33,9 @@ Worker recipe проекта предусматривает собственны
 
 Для чтения актуального auto-increment acceptance устанавливает `information_schema_stats_expiry=0`: MySQL может кешировать `TABLES.AUTO_INCREMENT` до 86400 секунд. Обоснование — [официальная документация переменной](https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_information_schema_stats_expiry). Следующее фактическое INSERT дополнительно проверяет восстановление счётчика 51 при исходном `MAX(id)=2`.
 
-## Будущая ручная последовательность
+## Ручная последовательность для отдельного повторного запуска
 
-Ни одна команда ниже в этой задаче не выполнялась. Их можно использовать после разрешения запуска окружения и проверок. Базовые локальные ключи, metadata schema, RustFS bucket и connection `Local S3 · RustFS` должны быть подготовлены по основному README. Worker image должен быть собран из текущего `Dockerfile.engines`, где отдельно установлены оба семейства клиентов.
+Последовательность относится к opt-in synthetic окружению. Полный acceptance уже выполнен; повторный запуск создаёт и сохраняет новые targets, без сброса старых данных. Базовые локальные ключи, metadata schema, RustFS bucket и connection `Local S3 · RustFS` должны быть подготовлены по основному README. Worker image должен быть собран из текущего `Dockerfile.engines`, где отдельно установлены оба семейства клиентов.
 
 ```sh
 docker compose -f compose.yaml -f compose.mysql-fixture.yaml --profile mysql8 up -d --wait mysql8-fixture
@@ -46,6 +50,19 @@ Acceptance использует официальный MCP client, `run_backup`/
 
 Все свежие databases/users, успешные и частичные targets сохраняются для проверки. Suite не выполняет автоматическое удаление, сброс или cleanup данных. Он не включён в default test script и запускается только при `STEELKEEP_ACCEPTANCE=synthetic-local-mysql`.
 
-## Что пока не подтверждено
+## Подтверждение и оставшиеся границы
 
-Нужны отдельные разрешённые проверки build/typecheck, запуска OCI image и initializer, фактических пакетов/ABI worker, SHA-2 cold-cache CLI authentication, полного native backup/upload/download/restore, независимых assertions и MCP transport/schema compatibility. Отдельная fault-injection проверка подмены MySQL client на MariaDB и UI/browser acceptance пока не выполнены. Ни один написанный test case не считается пройденным.
+Установка/сборка/typecheck и полный MySQL acceptance выполнены. Начальная попытка
+дошла до независимых data/schema checks, затем остановилась на варианте кода отказа FK
+(1216 вместо 1452); harness теперь принимает оба действительных кода, и полный rerun
+прошёл63 assertions. Неподдерживаемый `mysqldump --no-login-paths` заменён отдельным
+приватным `MYSQL_TEST_LOGIN_FILE`; фактические CLI export/import прошли.
+
+Новые GRANT на target экранируют `_`/`%`, когда MySQL `partial_revokes=OFF`;
+при подтверждённом ON используется literal raw database name. Backticks сами по себе
+не убирают wildcard-семантику. Существующие live grants автоматически не исправлялись:
+небезопасная роль должна быть отклонена, а владелец может подготовить новую точную цель.
+
+Отдельный worker с намеренно подменённым MariaDB client, полный аварийный/нагрузочный
+набор, MySQL UI recovery и clean immutable packaged delivery ещё не подтверждены.
+Успешный обычный synthetic recovery не является production/PITR гарантией.

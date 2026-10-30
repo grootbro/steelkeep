@@ -17,7 +17,7 @@ INSERT INTO fixture_ch_source.entries VALUES
   (3, 'comma,quote"line', 9007199254.7409, 9223372036854775807, ['x'], '2026-03-04 05:06:07.999', '0123');
 CREATE USER fixture_owner IDENTIFIED WITH sha256_password BY 'local-clickhouse-owner-only';
 -- Fixture owner is intentionally outside the application's registered connections.
-GRANT ALL ON *.* TO fixture_owner WITH GRANT OPTION;
+GRANT CREATE DATABASE, CREATE TABLE, CREATE USER, INSERT, SELECT, SHOW TABLES, SHOW USERS, SHOW ROLES, SHOW ROW POLICIES ON *.* TO fixture_owner WITH GRANT OPTION;
 CREATE USER backup_reader IDENTIFIED WITH sha256_password BY 'local-clickhouse-reader-only';
 CREATE USER restore_writer IDENTIFIED WITH sha256_password BY 'local-clickhouse-writer-only';
 GRANT SELECT, SHOW TABLES, BACKUP ON fixture_ch_source.* TO backup_reader;

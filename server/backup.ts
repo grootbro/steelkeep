@@ -13,6 +13,7 @@ import type {Engine} from './engines/types'
 import {createEngineAdapter,engineKinds} from './engines'
 import {runControl} from './engines/execution'
 import {createSourceLockHooks} from './source-locks'
+import {storageBackupFailure} from './storage-errors'
 
 export const isRetryableBackupError=(error:unknown)=>error instanceof AppError&&error.code==='STORAGE_UNAVAILABLE'
 
@@ -70,9 +71,7 @@ export async function executeBackup(services:Services,runId:string,token:string,
       const head=await s3.send(new HeadObjectCommand({Bucket:storageConfig.bucket,Key:key}),{abortSignal:signal})
       if(head.ContentLength!==size||head.Metadata?.sha256!==checksum)throw new AppError('ARTIFACT_SIZE_MISMATCH','Uploaded object metadata did not match the archive.')
     }catch(error){
-      if(error instanceof AppError)throw error
-      if(signal.aborted)throw new AppError('CANCELLED','Operation cancelled.')
-      throw new AppError('STORAGE_UNAVAILABLE','Storage upload or verification failed. A new attempt uses a separate immutable object.')
+      throw storageBackupFailure(error,signal)
     }
     await phase('publishing','Recording the completed artifact, native client version and validation manifest.')
     await rm(dir,{recursive:true,force:true})

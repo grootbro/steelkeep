@@ -4,7 +4,9 @@ Current source scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis,
 ClickHouse and SQL Server, plus S3-compatible artifact storage. All eight profiles
 have explicit acceptance gates. Local review is now authorized: PostgreSQL 17 and
 MariaDB 11 passed MCP and UI recovery; MongoDB 8.0.34, Redis 7.4.12 and SQLite passed
-MCP recovery. MySQL 8, ClickHouse and SQL Server remain pending. A form option or
+MCP recovery. MySQL 8.0.46 passed 1 test / 63 assertions and ClickHouse 25.8.12
+passed 1 test / 20 assertions through native MCP after Docker recovery. SQL Server runtime
+remains pending on a supported nonproduction x64 runner; its helper compiled. A form option or
 ordinary recovery pass does not establish arbitrary-schema or production support.
 See the [acceptance ledger](acceptance.md) for remaining adverse-case and packaging gates.
 

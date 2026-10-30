@@ -3,10 +3,9 @@
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
 
 **In development. Local preview address: [127.0.0.1:4310](http://127.0.0.1:4310).**
-Current environment incident: Docker is unresponsive after host disk exhaustion; the
-API/fixtures need recovery before this address is usable again. See the acceptance ledger.
-The authorized local review on 31 October 2026 passed native PostgreSQL 17 and MariaDB 11
-backup/restore through MCP, plus build/typecheck and targeted tests. The full eight-engine
+Docker recovered after an owner-approved restart; existing fixture volumes were preserved.
+The authorized local review on 31 October 2026 has verified ordinary native recovery for
+seven engine profiles, plus build/typecheck and targeted tests. The full eight-engine
 acceptance goal remains open. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
 
 ## Product
@@ -22,15 +21,15 @@ acceptance goal remains open. Scope and limitations are recorded in the [accepta
 Required engine scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server.
 Profiles, prerequisites and packaging gaps are explicit in [engine profiles](docs/engine-profiles.md).
 PostgreSQL 17 and MariaDB 11.4 have passed isolated native MCP recovery against the local fixtures.
-MongoDB 8.0, Redis 7.4 and SQLite also passed isolated MCP recovery; MySQL 8,
-ClickHouse and SQL Server remain pending. This is not a general production support claim.
+MongoDB 8.0.34, Redis 7.4.12, SQLite, MySQL 8.0.46 and ClickHouse 25.8.12 also passed
+isolated MCP recovery. SQL Server remains pending. This is not a general production support claim.
 MySQL/MariaDB have distinct compatibility constraints. No PITR, cluster-wide backup, or business
 recovery guarantee is implied by a successful logical dump or a zero CLI exit code.
 
 The Compose worker uses the multi-engine Ubuntu recipe in `Dockerfile.engines`:
 PG17, real MySQL8 and MariaDB11 clients, MongoDB tools100.20 and SQLite. Its ARM64 image
 built successfully and runs the local API/worker with current `server` and `shared` source
-bind mounts. Other-engine runtime acceptance and a clean immutable packaged run remain pending.
+bind mounts. Broader fault/profile acceptance and a clean immutable packaged run remain pending.
 SQL Server needs the separately provisioned x64 DacFx extension.
 The MariaDB compatibility executable is deliberately refused for MySQL sources.
 Current source limits are 2 GiB/archive, 500 tables and bounded validation metadata. MariaDB/MySQL
@@ -127,7 +126,7 @@ not create database/storage fixtures or establish successful recovery/container 
 
 The 31 October local execution record includes a successful frozen install, preserved setup
 key/token, healthy PostgreSQL/MariaDB/RustFS fixtures, migration 6, typecheck and build.
-`bun run test` most recently passed **22 tests / 108 assertions**; `bun run test:integration` passed
+`bun run test` most recently passed **26 tests / 154 assertions**; `bun run test:integration` passed
 **34 tests / 209 assertions**. HEAD classifications in the latter use mocked provider
 responses and are not data-recovery proof.
 
@@ -138,8 +137,9 @@ the same job and a subsequent restore to the occupied target was refused. Runtim
 included JSONB-key-order-independent comparison and a quoted MariaDB `rows` alias.
 
 Headless browser login and six main sections rendered; [overview screenshot](output/playwright/local-overview.png).
-The real UI recovery suite then passed **2/2 scenarios in 28.5 seconds**, one each for PostgreSQL
-and MariaDB: connection/plan forms, native jobs, metadata-only HEAD, independent S3 GET/SHA,
+The latest full Playwright suite passed **4/4 scenarios in 36.4 seconds**: PostgreSQL
+and MariaDB recovery, connection lifecycle and AI-agent issuance/scope enforcement/revocation.
+The recovery scenarios covered: connection/plan forms, native jobs, metadata-only HEAD, independent S3 GET/SHA,
 review confirmation, displayed validation and direct SQL checks. The authenticated same-origin
 Scalar `/openapi` page also rendered its API heading and operation list without page errors.
 Desktop/mobile visual, keyboard and failure-injection acceptance remain separate gates. See [acceptance](docs/acceptance.md)
@@ -150,12 +150,23 @@ See [acceptance ledger](docs/acceptance.md),
 [ClickHouse fixture](infra/clickhouse-fixture/README.md) and
 [native worker tooling](docs/native-tooling.md). Independent [MySQL 8](infra/mysql8-fixture-README.md)
 and optional [SQL Server](infra/mssql-fixture-README.md) fixtures have their own prerequisites.
-PostgreSQL 17, MariaDB 11, MongoDB 8.0.34, Redis 7.4.12 and SQLite have passed ordinary
-native MCP recovery. The extra-engine group passed 3 tests / 106 assertions; a subsequent
+PostgreSQL 17, MariaDB 11, MongoDB 8.0.34, Redis 7.4.12, SQLite, MySQL 8.0.46 and
+ClickHouse 25.8.12 have passed ordinary native MCP recovery. The extra-engine group passed 3 tests / 106 assertions; a subsequent
 SQLite Linux-writer rerun passed 35 assertions including the exact live-WAL marker/count.
 `bun run typecheck:acceptance` checks the harnesses and setup scripts separately.
-MySQL 8, ClickHouse and SQL Server still require their exact-profile recovery runs.
-SQL Server's restricted-source export remains an explicit compatibility question.
+After Docker recovery, PostgreSQL/MariaDB passed 2 tests / 27 assertions, MySQL passed
+1 / 63 and ClickHouse passed 1 / 20. Permanent S3 failure acceptance passed 1 test / 510
+assertions: missing bucket and invalid credentials failed at attempt 1 without artifact
+publication or retry during the bounded observation window. Metadata amcheck passed,
+all 46 stored secrets decrypted and 19 S3 objects matched their recorded bytes/SHA-256.
+SQL Server's restricted-source export still requires an owner-provided nonproduction
+physical x64 Linux runner and operator EULA acceptance; its helper compiled successfully.
+The corrected transient-S3 acceptance passed 1 test / 21 assertions in 14.70s:
+only its own RustFS container was stopped/restarted with the same container ID; the same
+job moved from attempt 1 retry_wait with no artifact to succeeded at attempt 2 with
+one artifact, independently downloaded/SHA-verified, while PostgreSQL totals stayed unchanged.
+The full fault matrix and clean packaged acceptance remain open. The packaged web image built successfully; its worker image was still building.
+Clean packaged stack/recovery acceptance remains pending.
 
 Only isolated synthetic databases/storage were used. No production connection, publication,
 deployment or paid service was used.

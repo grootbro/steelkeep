@@ -18,17 +18,29 @@ Root integrates subagents with disjoint boundaries: src/design, native engines/r
 application API/MCP/schema/scheduler; root owns worker/deployment/docs and final contracts.
 
 Implementation and local review started 31 October 2026. Frozen install, preserved key/token
-setup, migration 6, typecheck and build passed. The executor recorded latest 22 unit tests / 108
+setup, migration 6, typecheck and build passed. The executor recorded latest 26 unit tests / 154
 assertions and 34 guarded integration tests / 209 assertions passed. The ARM64 Ubuntu worker
 image built; the running Docker API/worker use fresh source bind mounts. This is development
-runtime evidence, not clean immutable self-hosted delivery.
+runtime evidence, not clean immutable self-hosted delivery. The packaged web image
+has now built successfully; the separate worker image was still building, and clean
+packaged stack/recovery acceptance remains pending.
 
 Native MCP recovery passed for PostgreSQL 17 and MariaDB 11: actual dump/upload/download,
 worker SHA-256 gate, fresh separate precreated target and manifest validation. Independent
 SQL checks confirmed fixture counts/sums and the PostgreSQL identity. Both scenarios passed
 27 assertions after runtime fixes. MongoDB, Redis and SQLite subsequently passed native MCP
-recovery (3 tests / 106 assertions), with an additional Linux-writer live-WAL rerun. MySQL8,
-ClickHouse, SQL Server and crash/restart/cancellation injection remain pending.
+recovery (3 tests / 106 assertions), with an additional Linux-writer live-WAL rerun.
+After the owner-approved Docker restart, MySQL 8.0.46 passed 1 test / 63 assertions and
+ClickHouse 25.8.12 passed 1 test / 20 assertions; PG/Maria passed again (2 / 27).
+Existing volumes were preserved, metadata amcheck passed, all 46 stored secrets decrypted
+and 19 existing S3 objects matched their recorded bytes/SHA-256. SQL Server runtime is
+still pending on an owner-provided nonproduction physical x64 Linux runner with EULA
+acceptance; its .NET 10/DacFx helper has compiled, including the patched Pkcs dependency.
+Selected PostgreSQL cancellation/SIGKILL/restart quarantine passed (1 / 403 assertions),
+with a 12-second no-replay window. Permanent S3 refusals passed (1 / 510); an actual own-
+RustFS stop/start passed (1 / 21, 14.70s): same job attempt 1 retry_wait/no artifact to
+attempt 2 success/one artifact, independent GET/SHA and unchanged source totals. These
+checks do not establish partial-write recovery, every lease boundary or the full fault matrix.
 [Detailed evidence and proof gates](acceptance.md).
 
 31 October expansion: native AI-agent access is required scope, superseding the original
@@ -41,8 +53,8 @@ S3 publication and trusted restore pipeline. MongoDB source-lock journals surviv
 death; ClickHouse native operation journals distinguish HTTP loss from server completion.
 SQL Server uses an optional .NET DacFx BACPAC portability helper, never passwords in argv.
 See [engine profiles](engine-profiles.md) and [fresh research](fresh-tech-research-20261031.md).
-The application and acceptance harnesses typecheck. Five ordinary native recovery profiles
-have execution evidence; the remaining adapters, adverse cases and clean packaged delivery
+The application and acceptance harnesses typecheck. Seven ordinary native recovery profiles
+have execution evidence; SQL Server runtime, broader adverse cases and clean packaged delivery
 remain proof obligations.
 
 Scalar is pinned and served from the installation's own dependency asset, with CDN fonts,
@@ -72,14 +84,20 @@ visible logical column ordinals because a native logical restore compacts droppe
 The PG fixture now includes a dropped-column slot. The passing unit group includes manifest
 comparison tests; the native PostgreSQL/MariaDB rerun covers logical recovery with the current
 comparison. Runtime fixes use standard key-order-independent deep comparison for JSONB
-manifests and quote MariaDB's reserved `rows` alias. Independent MySQL 8 recovery is still pending.
+manifests and quote MariaDB's reserved `rows` alias. Independent MySQL 8.0.46 recovery
+subsequently passed 63 assertions. Database-level grants now normalize escaped wildcard
+characters and verify MySQL partial_revokes mode; quoted raw wildcard target grants are
+refused when their scope is broader than the selected destination.
 
 Headless browser login and all six main sections rendered against the local runtime; an
 [overview screenshot](../output/playwright/local-overview.png) was saved. The real UI recovery
-suite then passed both PostgreSQL and MariaDB scenarios (2/2, 28.5 s): form-created profiles,
+suite passed both PostgreSQL and MariaDB scenarios; the latest full Playwright group
+passed 4/4 in 36.4s, including connection lifecycle and AI-agent issuance, real MCP/API
+scope enforcement and UI revocation. Recovery covered form-created profiles,
 native jobs, metadata-only availability, independent S3 GET/SHA, explicit review confirmation,
 displayed schema/data/sequence validation and independent SQL. The PG fixture's dropped
 column, Unicode/bytea and identity were checked; MariaDB's FK/CHECK and auto-increment 41
 were checked. Broader responsive/keyboard/visual and physical-device acceptance remain open.
-Failure/ownership-transfer behavior requires deliberate injection; it is not inferred from
-these successful ordinary recovery paths.
+Selected failure behavior has separate execution evidence above. Broader ownership-transfer,
+partial-write, crash-boundary and engine-specific source-lock/native-journal cases still
+require deliberate injection; ordinary successful recovery does not establish them.
