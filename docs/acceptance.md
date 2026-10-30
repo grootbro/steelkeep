@@ -1,3 +1,9 @@
+# Current environment interruption
+
+The earlier clean ARM64 packaged acceptance passed (1 test / 91 assertions / 10.09s), before the latest mobile CSS changes. A subsequent CSS image rebuild unexpectedly reinstalled dependency layers, exhausted host space to about100MiB and returned EIO. Root cancelled only the verified proof build clients. Docker API is currently unavailable; preview database operations and the packaged stack need recovery. No volumes, databases or archives were deleted. Do not start a cold build without at least8–10GiB free host space.
+
+The new scheduled-backup harness created its dedicated minute-cron plan but failed during that interruption (44.06s, 6 assertions). Its finally block could not confirm disablement. After metadata recovers, inspect the unique `Scheduled native acceptance <uuid>` plan (Asia/Bangkok, exact fixture source/storage), disable only that plan through the application API, and review retained occurrences/jobs before any rerun. This is not scheduled native acceptance. Latest mobile CSS fixes remain unpackaged; both TypeScript checks passed.
+
 # Acceptance ledger
 
 ## Current environment and latest evidence · 31 October 2026
@@ -28,8 +34,12 @@ The actual PostgreSQL job recorded attempt 1 STORAGE_UNAVAILABLE/retry_wait with
 artifact, then the same job succeeded at attempt 2 with one artifact and stable request
 idempotency. Independent S3 GET/SHA and unchanged PostgreSQL count/sum passed. An earlier
 Mac socket realpath preflight failure occurred before mutation and is not counted as proof.
-The packaged web image built successfully; the worker image was still building.
-The clean packaged stack and its recovery acceptance have not passed.
+Clean ARM64 packaged acceptance passed 1 test / 91 assertions in 10.09s. Image ID
+prefixes: web `4aa204616469`, worker `ed6ac2132f62`; backend `a1e1cf5`. No application
+source binds supplied the compiled UI/backend. Separate private metadata/secrets, UI
+login/six sections, official MCP PG/Maria native recovery into fresh restricted targets,
+independent actual S3 GET/SHA and SQL passed. The image predates three newer mobile CSS
+declarations; rebuild/rerun for those edits remains pending. See [packaged proof](selfhost-acceptance.md).
 
 ### Earlier incident timeline and retained evidence
 
@@ -56,7 +66,7 @@ New directly observed results before the incident:
   Updated image export and actual SQL Server runtime remain unproven.
 - Isolated packaged proof source is prepared (ports4312/54381, distinct metadata/keys,
   no app source mounts). Its filesystem-only setup ran twice and retained private0600
-  material; no proof image/stack/recovery has run.
+  material; the later 91-assertion packaged pass above supersedes that earlier source-only status.
 
 During the Docker outage, the SQL grant guard was tightened: backtick quoting does not
 make `_`/`%` literal database-grant characters. Restore rejects wildcard scopes unless
@@ -172,9 +182,9 @@ assertions alone were not counted as execution.
 | Artifact availability | Present/missing/changed/unknown, bounded HEAD, denied/timeout unknown, stale/credential races | Mock-provider/metadata tests plus real UI HEAD and independent GET/SHA passed; real deletion/denial matrix pending |
 | Target protection | Source aliases, metadata, nonempty/unknown target, version and privilege failures | MCP occupied-target refusal and targeted cases passed; full refusal matrix pending |
 | Retries/cancellation | Safe bounded retries, confirmed process-group stop, partial target retained | Selected cancellation/SIGKILL/quarantine, permanent S3 refusals and real attempt-2 storage retry passed; full late-result/partial-write matrix pending |
-| REST/OpenAPI | Actual schema correspondence, auth, errors and stable operation IDs | Targeted integration and authenticated local Scalar browser render passed; full packaged delivery pending |
+| REST/OpenAPI | Actual schema correspondence, auth, errors and stable operation IDs | Targeted integration/Scalar render and separate ARM64 packaged UI/API/MCP PG/Maria proof passed; latest mobile CSS image pending |
 | MCP | Official-client discovery, same native flow, scope denial and idempotency | Seven ordinary native engine profiles passed; MSSQL and broader adverse matrices pending |
-| Self-hosted delivery | Clean isolated Compose, packaged single-origin UI/API/MCP and separate immutable worker | ARM64 worker build and source-mounted development runtime passed; clean packaged self-host pending |
+| Self-hosted delivery | Clean isolated Compose, packaged single-origin UI/API/MCP and separate immutable worker | Clean ARM64 no-source-bind installation passed 1 / 91 for PG/Maria; latest mobile CSS image and other engine/architecture coverage pending |
 | No collateral changes | Preserve data/volumes; no production, deployment, publication or paid services | Local synthetic scope retained |
 
 A lint/typecheck, screenshot, API 200, S3 HEAD, metadata digest or zero native-tool exit
@@ -213,8 +223,8 @@ isolated. Harness/admin setup precreates test targets; restore does not create o
   native recovery passed 1 / 63; packaging alone was not counted as execution.
 - `compose.mssql-fixture.yaml`, `acceptance/mssql-recovery.test.ts` and `Dockerfile.mssql`:
   optional provisioned SQL Server profile remains unrun, including restricted-source export.
-- `Dockerfile.engines`: ARM64 build passed; the clean immutable delivery path and other
-  architecture/profile matrices remain outstanding.
+- `Dockerfile.engines`: ARM64 build and clean no-source-bind PG/Maria packaged proof passed; other
+  architecture/profile matrices and latest mobile CSS packaged rerun remain outstanding.
 
 ## Extra-engine execution notes
 

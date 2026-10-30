@@ -1,6 +1,16 @@
+# Current environment interruption
+
+The earlier clean ARM64 packaged acceptance passed (1 test / 91 assertions / 10.09s), before the latest mobile CSS changes. A subsequent CSS image rebuild unexpectedly reinstalled dependency layers, exhausted host space to about100MiB and returned EIO. Root cancelled only the verified proof build clients. Docker API is currently unavailable; preview database operations and the packaged stack need recovery. No volumes, databases or archives were deleted. Do not start a cold build without at least8–10GiB free host space.
+
+The new scheduled-backup harness created its dedicated minute-cron plan but failed during that interruption (44.06s, 6 assertions). Its finally block could not confirm disablement. After metadata recovers, inspect the unique `Scheduled native acceptance <uuid>` plan (Asia/Bangkok, exact fixture source/storage), disable only that plan through the application API, and review retained occurrences/jobs before any rerun. This is not scheduled native acceptance. Latest mobile CSS fixes remain unpackaged; both TypeScript checks passed.
+
 # Packaged self-host acceptance
 
-This proof packages the current application and worker from the repository's existing Dockerfiles, with **no application source bind mounts**. It derives from `compose.selfhost.yaml` using `compose.acceptance-selfhost.yaml`; the existing preview remains on 4310 and its API on 4311. Authoring these files does not establish that the package built or passed. No image/service/browser/test command was executed during this task.
+This proof packages the application and worker from the repository's existing Dockerfiles, with **no application source bind mounts**. It derives from `compose.selfhost.yaml` using `compose.acceptance-selfhost.yaml`; the preview remains on 4310 and its API on 4311.
+
+Recorded on 31 October 2026: the primary executor built both ARM64 images and the clean packaged acceptance passed **1 test / 91 assertions in 10.09s**. Image ID prefixes: web `4aa204616469`, worker `ed6ac2132f62`; backend source `a1e1cf5`. Compiled UI login/six-section navigation, separate private metadata/secrets, official MCP PG/Maria native recovery into fresh restricted targets, independent actual S3 GET/SHA and SQL all passed. This docs update did not rerun commands.
+
+The web image predates three newer mobile CSS declarations. Those changes require rebuild/rerun and are not included in this packaged evidence.
 
 ## Separate installation
 
@@ -61,7 +71,7 @@ Before accepting results, independently inspect the merged model/container mount
 
 ## Guarded acceptance
 
-The new harness is source-only until the owner runs:
+The following opt-in harness passed in the recorded run above; use it for a separate authorized repeat:
 
 ```sh
 STEELKEEP_ACCEPTANCE=synthetic-local-selfhost bun test acceptance/selfhost.test.ts
@@ -85,6 +95,8 @@ All SQL admin/fixture and S3 connections use fixed loopback ports and public dis
 The browser uses no trace, video, HAR, screenshot, persistent context or saved storage-state output. Token entry uses a private main-frame binding, keeping the token out of Playwright locator action arguments and failure call logs. Debug/protocol logging is refused. Do not enable recording/debug tools around a run that handles the real proof token.
 
 ## Evidence boundaries and preservation
+
+Two preflight corrections were exercised by the passing run. The mount guard permits only Docker Desktop's exact known `/host_mnt` prefix translation on macOS for individual bind files. The proof database also joins a separate `inspection` bridge to make its loopback-only 54381 binding effective; the internal default network remains, and only the database joins this extra bridge. That bridge is not an egress firewall. The executor recreated only the proof database container with the same named volume, without a data reset. The database does not join the shared fixture network.
 
 A pass demonstrates one built local package's UI login/navigation, shared-origin HTTP/MCP contracts, packaged native worker, separate metadata and real PostgreSQL 17/MariaDB 11 round trips. It does not establish all eight engines, SQL Server/DacFx packaging, production deployment, cross-architecture support, load, physical/PITR recovery, visual/a11y acceptance or complete application-level recovery. Existing dedicated UI/failure suites provide separate evidence and should not be silently counted as packaged acceptance.
 

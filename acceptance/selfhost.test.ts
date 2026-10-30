@@ -23,15 +23,18 @@ async function privateFile(name:string){
 }
 async function docker(args:string[]){
   return new Promise<string>((resolve,reject)=>{
-    const child=spawn('docker',args,{cwd:workspace,env:{PATH:process.env.PATH,HOME:process.env.HOME},stdio:['ignore','pipe','ignore']})
+    const child=spawn('docker',args,{cwd:workspace,env:{PATH:process.env.PATH,HOME:process.env.HOME},detached:true,stdio:['ignore','pipe','ignore']})
     let output='',done=false
-    const timer=setTimeout(()=>{child.kill('SIGKILL');finish(false)},15000)
+    const kill=()=>{if(child.pid)try{process.kill(-child.pid,'SIGKILL')}catch{}}
+    const timer=setTimeout(()=>{kill();finish(false)},15000)
     function finish(ok:boolean){if(done)return;done=true;clearTimeout(timer);ok?resolve(output.trim()):reject(new Error('Read-only local package inspection failed; raw Docker output is omitted.'))}
-    child.stdout.on('data',(chunk:Buffer)=>{if(output.length+chunk.length>128*1024){child.kill('SIGKILL');finish(false)}else output+=chunk.toString('utf8')})
+    child.stdout.on('data',(chunk:Buffer)=>{if(output.length+chunk.length>128*1024){kill();finish(false)}else output+=chunk.toString('utf8')})
     child.once('error',()=>finish(false));child.once('close',code=>finish(code===0))
   })
 }
 async function packagedContainers(){
+  // Docker Desktop may expose individual host-file mounts through its VM prefix.
+  const sameHostPath=(actual:string,expected:string)=>actual===expected||process.platform==='darwin'&&actual==='/host_mnt'+expected
   if(process.env.DOCKER_HOST||process.env.DOCKER_CONTEXT)throw new Error('Unset Docker endpoint overrides before inspecting this fixed local proof.')
   const endpoint=JSON.parse(await docker(['context','inspect','--format','{{json .Endpoints.docker.Host}}'])) as unknown
   if(typeof endpoint!=='string'||!endpoint.startsWith('unix:///'))throw new Error('Packaged acceptance requires a local Docker Unix socket.')
@@ -41,8 +44,8 @@ async function packagedContainers(){
     const row=JSON.parse(await docker(['--host',endpoint,'inspect','--format','{"labels":{{json .Config.Labels}},"mounts":{{json .Mounts}},"image":{{json .Config.Image}},"ports":{{json .NetworkSettings.Ports}}}',id])) as {labels:Record<string,string>;mounts:Array<{Type:string;Source:string;Destination:string;RW:boolean;Name?:string}>;image:string;ports:Record<string,Array<{HostIp:string;HostPort:string}>|null>}
     if(await realpath(row.labels['com.docker.compose.project.working_dir']??'/')!==await realpath(workspace))throw new Error('The proof container belongs to another checkout.')
     if(service==='database'){
-      if(row.mounts.length!==2||!row.mounts.some(m=>m.Type==='volume'&&m.Name==='steelkeep-proof_metadata'&&m.Destination==='/var/lib/postgresql/data')||!row.mounts.some(m=>m.Type==='bind'&&m.Source===join(privateRoot,'metadata-password')&&m.Destination==='/run/steelkeep/metadata-password'&&!m.RW))throw new Error('Proof metadata must use its own volume and private password file.')
-    }else if(row.image!==`steelkeep-proof-${service==='web'?'web':'worker'}:local`||row.mounts.length!==1||row.mounts[0].Type!=='bind'||row.mounts[0].Source!==privateRoot||row.mounts[0].Destination!=='/run/steelkeep'||row.mounts[0].RW)throw new Error('Application proof requires packaged images and only the private read-only secret mount; source mounts are forbidden.')
+      if(row.mounts.length!==2||!row.mounts.some(m=>m.Type==='volume'&&m.Name==='steelkeep-proof_metadata'&&m.Destination==='/var/lib/postgresql/data')||!row.mounts.some(m=>m.Type==='bind'&&sameHostPath(m.Source,join(privateRoot,'metadata-password'))&&m.Destination==='/run/steelkeep/metadata-password'&&!m.RW))throw new Error('Proof metadata must use its own volume and private password file.')
+    }else if(row.image!==`steelkeep-proof-${service==='web'?'web':'worker'}:local`||row.mounts.length!==1||row.mounts[0].Type!=='bind'||!sameHostPath(row.mounts[0].Source,privateRoot)||row.mounts[0].Destination!=='/run/steelkeep'||row.mounts[0].RW)throw new Error('Application proof requires packaged images and only the private read-only secret mount; source mounts are forbidden.')
     if(service!=='worker'){
       const port=service==='web'?'4312':'54381',target=service==='web'?'4312/tcp':'5432/tcp',bindings=row.ports[target]
       if(!bindings||bindings.length!==1||bindings[0].HostIp!=='127.0.0.1'||bindings[0].HostPort!==port)throw new Error('Proof ports must be fixed loopback bindings distinct from the preview.')

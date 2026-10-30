@@ -7,7 +7,7 @@ services:
     volumes: !override
       - metadata:/var/lib/postgresql/data
       - ./.steelkeep/selfhost-proof/metadata-password:/run/steelkeep/metadata-password:ro
-    networks: [default]
+    networks: [default,inspection]
   migrate:
     image: steelkeep-proof-web:local
     environment: &proof_environment
@@ -43,6 +43,8 @@ volumes:
 networks:
   default:
     internal: true
+  # Docker does not publish ports for a container on internal networks only.
+  inspection: {}
   fixtures:
     external: true
     name: steelkeep_default

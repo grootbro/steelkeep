@@ -1,3 +1,9 @@
+# Current environment interruption
+
+The earlier clean ARM64 packaged acceptance passed (1 test / 91 assertions / 10.09s), before the latest mobile CSS changes. A subsequent CSS image rebuild unexpectedly reinstalled dependency layers, exhausted host space to about100MiB and returned EIO. Root cancelled only the verified proof build clients. Docker API is currently unavailable; preview database operations and the packaged stack need recovery. No volumes, databases or archives were deleted. Do not start a cold build without at least8–10GiB free host space.
+
+The new scheduled-backup harness created its dedicated minute-cron plan but failed during that interruption (44.06s, 6 assertions). Its finally block could not confirm disablement. After metadata recovers, inspect the unique `Scheduled native acceptance <uuid>` plan (Asia/Bangkok, exact fixture source/storage), disable only that plan through the application API, and review retained occurrences/jobs before any rerun. This is not scheduled native acceptance. Latest mobile CSS fixes remain unpackaged; both TypeScript checks passed.
+
 # Steelkeep
 
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
@@ -29,7 +35,7 @@ recovery guarantee is implied by a successful logical dump or a zero CLI exit co
 The Compose worker uses the multi-engine Ubuntu recipe in `Dockerfile.engines`:
 PG17, real MySQL8 and MariaDB11 clients, MongoDB tools100.20 and SQLite. Its ARM64 image
 built successfully and runs the local API/worker with current `server` and `shared` source
-bind mounts. Broader fault/profile acceptance and a clean immutable packaged run remain pending.
+bind mounts. Broader fault/profile acceptance remains pending; the separate packaged PG/Maria proof passed.
 SQL Server needs the separately provisioned x64 DacFx extension.
 The MariaDB compatibility executable is deliberately refused for MySQL sources.
 Current source limits are 2 GiB/archive, 500 tables and bounded validation metadata. MariaDB/MySQL
@@ -62,8 +68,11 @@ loopback configuration from `.env.example` instead. Do not run both APIs on the 
 
 For a packaged build, `Dockerfile` serves Start documents/assets and Elysia API/MCP from
 one Bun server. `compose.selfhost.yaml` uses the separate `Dockerfile.engines` worker image.
-The current preview uses the development server and source-mounted API/worker. Clean packaged
-single-origin delivery and recovery from an immutable self-hosted image still require verification.
+The preview uses the development server and source-mounted API/worker. A separate clean
+ARM64 packaged installation passed 1 test / 91 assertions in 10.09s without application
+source binds: compiled UI login/six sections and official MCP PG/Maria recovery with
+independent S3 GET/SHA and SQL. See [packaged proof](docs/selfhost-acceptance.md).
+Its web image predates three newer mobile CSS declarations; their rebuild/rerun is pending.
 
 ## Access and secrets
 
@@ -165,8 +174,9 @@ The corrected transient-S3 acceptance passed 1 test / 21 assertions in 14.70s:
 only its own RustFS container was stopped/restarted with the same container ID; the same
 job moved from attempt 1 retry_wait with no artifact to succeeded at attempt 2 with
 one artifact, independently downloaded/SHA-verified, while PostgreSQL totals stayed unchanged.
-The full fault matrix and clean packaged acceptance remain open. The packaged web image built successfully; its worker image was still building.
-Clean packaged stack/recovery acceptance remains pending.
+The full fault matrix remains open. Clean ARM64 packaged acceptance passed 1 / 91
+in 10.09s: web image prefix `4aa204616469`, worker `ed6ac2132f62`, backend `a1e1cf5`.
+The passing web image excludes the three newer mobile CSS declarations.
 
 Only isolated synthetic databases/storage were used. No production connection, publication,
 deployment or paid service was used.

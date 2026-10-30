@@ -2,9 +2,8 @@
 
 Status: **ARM64 development image built; seven ordinary native recovery profiles verified, 31 October 2026**.
 The primary executor observed the Ubuntu `Dockerfile.engines` build and running development
-API/worker. Current `server`/`shared` source is bind-mounted into those containers. This does
-not prove a clean immutable self-hosted image, amd64 delivery or recovery for every packaged
-profile. Development and self-hosted Compose select this recipe; the Alpine alternative remains.
+API/worker. Current `server`/`shared` source is bind-mounted into those containers. The separate ARM64 no-source-bind packaged PG/Maria proof subsequently passed
+1 test / 91 assertions in 10.09s. This does not qualify amd64 or every packaged profile. Development and self-hosted Compose select this recipe; the Alpine alternative remains.
 See the [execution ledger](acceptance.md). This documentation pass did not build or run tooling.
 
 ## Packaged profiles
@@ -114,9 +113,15 @@ amcheck, decryption of all 46 stored secrets and full bytes/SHA checks for 19 ex
 objects passed. MySQL 8.0.46 and ClickHouse 25.8.12 ordinary recovery subsequently passed
 as recorded above. Permanent S3 failures and bounded retry after stopping/restarting only
 the same fixture RustFS container also passed; the full fault matrix remains open.
-The packaged web image has built successfully; the separate worker image was still building.
+The clean ARM64 packaged web/worker proof passed 1 test / 91 assertions in 10.09s without
+application source binds: web image ID prefix `4aa204616469`, worker `ed6ac2132f62`,
+backend `a1e1cf5`. Separate private metadata/secrets, compiled UI login/six sections and
+official MCP PG/Maria native recovery plus independent S3 GET/SHA/SQL passed. This web
+image excludes three newer mobile CSS declarations; their rebuild/rerun remains pending.
+See [packaged acceptance](selfhost-acceptance.md).
 
-Remaining qualification: amd64 worker delivery, clean immutable self-hosted stack/recovery,
+Remaining qualification: amd64 worker delivery, additional packaged engine profiles,
+latest mobile CSS packaged rerun,
 SQL Server runtime on an actual nonproduction x64 runner with operator EULA acceptance,
 remaining engine UI and responsive/accessibility review, and broader adverse cases.
 No volume or restore target was deleted.

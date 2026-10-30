@@ -21,9 +21,12 @@ Implementation and local review started 31 October 2026. Frozen install, preserv
 setup, migration 6, typecheck and build passed. The executor recorded latest 26 unit tests / 154
 assertions and 34 guarded integration tests / 209 assertions passed. The ARM64 Ubuntu worker
 image built; the running Docker API/worker use fresh source bind mounts. This is development
-runtime evidence, not clean immutable self-hosted delivery. The packaged web image
-has now built successfully; the separate worker image was still building, and clean
-packaged stack/recovery acceptance remains pending.
+runtime evidence, not clean immutable self-hosted delivery. A separate clean ARM64 packaged installation passed 1 test / 91 assertions in 10.09s:
+web image ID prefix `4aa204616469`, worker `ed6ac2132f62`, backend `a1e1cf5`. Private
+separate metadata/secrets and no application source binds supplied compiled UI login/six
+sections and official MCP PG/Maria recovery with independent actual S3 GET/SHA and SQL
+into fresh restricted targets. Its web image predates three newer mobile CSS declarations;
+rebuilt-image acceptance for those edits is pending. See [packaged proof](selfhost-acceptance.md).
 
 Native MCP recovery passed for PostgreSQL 17 and MariaDB 11: actual dump/upload/download,
 worker SHA-256 gate, fresh separate precreated target and manifest validation. Independent
@@ -54,8 +57,8 @@ death; ClickHouse native operation journals distinguish HTTP loss from server co
 SQL Server uses an optional .NET DacFx BACPAC portability helper, never passwords in argv.
 See [engine profiles](engine-profiles.md) and [fresh research](fresh-tech-research-20261031.md).
 The application and acceptance harnesses typecheck. Seven ordinary native recovery profiles
-have execution evidence; SQL Server runtime, broader adverse cases and clean packaged delivery
-remain proof obligations.
+have execution evidence; SQL Server runtime, broader adverse cases, additional packaged engine/architecture
+coverage and the latest mobile CSS packaged rerun remain proof obligations.
 
 Scalar is pinned and served from the installation's own dependency asset, with CDN fonts,
 credential persistence and proxy disabled. Authenticated API/MCP responses use no-store.
@@ -63,7 +66,8 @@ The package metadata advertises standalone.js, while the OpenAPI plugin's defaul
 uses standalone.min.js; the explicit local asset path avoids depending on that moving URL.
 The local build, headless login/navigation and authenticated Scalar `/openapi` browser render
 passed. The API heading and operation list rendered from the local bundle with zero page
-errors. This does not cover clean packaged delivery or a full API-client compatibility matrix.
+errors. The separate packaged proof covers its own UI/API/MCP PG/Maria path; a full API-client
+compatibility matrix and latest mobile CSS packaged rerun remain open.
 
 Connection lifecycle now uses a revision CAS and sorted connection-row admission locks.
 Identity remains immutable; name-only edits preserve ciphertext and checked state. Actual
