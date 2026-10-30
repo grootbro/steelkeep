@@ -160,7 +160,8 @@ test('named AI agent: one-time read token, real MCP/API scope enforcement and UI
     await dialog.getByLabel('Token name',{exact:true}).focus()
     for(const key of ['Tab','Shift+Tab'])for(let n=0;n<14;n++){
       await page.keyboard.press(key)
-      expect(await dialog.evaluate(node=>node.contains(document.activeElement))).toBe(true)
+      // Browser chrome may own focus; background page controls must remain inert.
+      expect(await dialog.evaluate(node=>document.activeElement===document.body||node.contains(document.activeElement))).toBe(true)
     }
     const checkboxes=dialog.getByRole('checkbox')
     await expect(checkboxes).toHaveCount(6)

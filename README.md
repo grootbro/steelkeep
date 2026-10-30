@@ -112,6 +112,19 @@ Retention that deletes user backups is outside the current scope.
 
 ## Development and evidence
 
+The compiled UI and single-origin entrypoint can be checked without Docker or a working
+metadata database:
+
+```sh
+bun run build
+STEELKEEP_ACCEPTANCE=synthetic-local-web bun test acceptance/web-outage.test.ts
+```
+
+This guarded check uses its own loopback port4320 and temporary installation credentials.
+It deliberately targets an unavailable metadata endpoint, checks real API/MCP error results,
+and verifies browser navigation/error states and native dialog keyboard behavior. It does
+not create database/storage fixtures or establish successful recovery/container delivery.
+
 The 31 October local execution record includes a successful frozen install, preserved setup
 key/token, healthy PostgreSQL/MariaDB/RustFS fixtures, migration 6, typecheck and build.
 `bun run test` most recently passed **22 tests / 108 assertions**; `bun run test:integration` passed

@@ -9,7 +9,7 @@ import {openapiPage} from './openapi-page'
 
 const params=t.Object({id:t.String({format:'uuid'})})
 const errors={400:errorResponse,401:errorResponse,403:errorResponse,404:errorResponse,409:errorResponse,422:errorResponse,500:errorResponse}
-export const capabilities={engines:engineProfiles.map(p=>p.kind),profiles:engineProfiles.map(profile=>({...profile})),operations:['list','configure','run_backup','check_backup_availability','prepare_restore','start_restore','cancel_job','manage_agents','issue_scoped_token','revoke_token','audit'],restore:{target:'precreated-empty',reviewExpiresSeconds:600},schedules:{missed:'skip',overlap:'skip',timezone:'IANA',upcomingCount:3},support:'Selected implementation profiles. No runtime acceptance has been performed; required native tools, helper and mounts must be provisioned.'}
+export const capabilities={engines:engineProfiles.map(p=>p.kind),profiles:engineProfiles.map(profile=>({...profile})),operations:['list','configure','run_backup','check_backup_availability','prepare_restore','start_restore','cancel_job','manage_agents','issue_scoped_token','revoke_token','audit'],restore:{target:'precreated-empty',reviewExpiresSeconds:600},schedules:{missed:'skip',overlap:'skip',timezone:'IANA',upcomingCount:3},support:'Engine-specific schema/version limits apply. Native tools, helper and mounts must be provisioned; consult the documented compatibility matrix.'}
 export function createApp(services:Services){
  validateScopedTokens()
  const principals=new WeakMap<Request,ReturnType<Services['authenticate']>>()

@@ -27,7 +27,8 @@ New directly observed results before the incident:
   rotation/check failure/recovery, stale revision/reload, protected/unused removal).
   AI-agent scenario found missing initial field focus; Modal now focuses the first enabled
   form control after opening. Revalidation was blocked by Docker failure. Agent-management
-  flow and the focus change remain unaccepted.
+  token/revocation flow remains unaccepted. Focus behavior was subsequently checked separately
+  by the host-only web harness below.
 - C# helper compile succeeded; Pkcs9.0.21 override compiled without the earlier advisories.
   Updated image export and actual SQL Server runtime remain unproven.
 - Isolated packaged proof source is prepared (ports4312/54381, distinct metadata/keys,
@@ -45,6 +46,31 @@ guard and freshly prepared exact-scope roles after Docker recovery. Earlier pass
 are not proof of this later source revision. Application and acceptance typechecks pass.
 
 The execution record below is historical evidence from the observed earlier checkout.
+
+## Host-only web checks during the Docker outage
+
+The current Start client/SSR build passed on the host without image downloads. Root then
+ran the same `server/serve.ts` entrypoint on loopback with deliberately unavailable metadata
+and no fixture mutations. HTTP checks passed for HTML root/deep routes, compiled JavaScript
+and immutable asset caching, owner session/unauthenticated refusal, local OpenAPI, safe
+metadata-failure JSON, unsupported-method and encoded path-traversal refusals.
+
+That exercise found an actual UI failure: after the first overview500, parent/child query
+observers repeatedly remounted/refetched and left the page on Connecting indefinitely.
+The child now consumes the parent's query result. Configuration is rendered independently
+of the unavailable overview data; integration details and separately scoped agent queries
+remain visible, with their own error states. Native dialog cleanup also returns focus to
+the still-connected opener after Escape/close.
+
+`STEELKEEP_ACCEPTANCE=synthetic-local-web bun test acceptance/web-outage.test.ts` passed
+**1 test /46 assertions /1.55s** against the real rebuilt UI and Bun server: actual500 for
+metadata reads, real MCP tool error (not an empty successful list), available capabilities
+and OpenAPI, successful login, six navigable sections with error alerts rather than a spinner,
+no uncaught browser error/token rendering, initial form focus, inert background controls
+under Tab/Shift+Tab, Escape and focus restoration. The test owns temporary credentials,
+port4320 and its server/browser processes, which are closed afterward; no Docker, database
+or stored artifact is modified. This is degraded-mode evidence, not successful recovery or
+immutable image qualification. Full agent issuance/revocation still requires the real DB.
 
 31 October 2026. The owner authorized local install, build/checks and isolated fixture
 services to provide a working preview. The full eight-engine goal remains active.
