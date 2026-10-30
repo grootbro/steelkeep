@@ -4,11 +4,11 @@ import {open} from 'node:fs/promises'
 import {createReadStream} from 'node:fs'
 import {createInterface} from 'node:readline'
 import {AppError,allowedHost} from '../security'
-import {digest} from './database'
+import {manifestComparison} from './database'
 import type {AdapterOptions,EngineAdapter,Identity,Manifest,EnginePhase,ValidationComparison} from './types'
 
 const maxKeys=5000,maxSnapshotBytes=64*1024*1024,maxKeyBytes=1024
-type RedisWire={connect():Promise<unknown>;sendCommand(args:Array<string|Buffer>):Promise<unknown>;on(event:string,listener:()=>void):unknown;destroy():void;close():Promise<unknown>}
+type RedisWire={connect():Promise<unknown>;sendCommand(args:Array<string|Buffer>,options:{typeMapping:{[RESP_TYPES.BLOB_STRING]:typeof Buffer}}):Promise<unknown>;on(event:string,listener:()=>void):unknown;destroy():void;close():Promise<unknown>}
 type Entry={key:string;payload:string;expiresAt:number;type:string}
 type KeyDigest={type:string;sha256:string;expiresAt:number}
 const text=(value:unknown)=>Buffer.isBuffer(value)?value.toString('utf8'):String(value)
@@ -81,7 +81,9 @@ export class RedisAdapter implements EngineAdapter {
     if(!this.client||!this.connected)throw new AppError('DATABASE_UNAVAILABLE','The Redis connection is not open.')
     let timer:ReturnType<typeof setTimeout>|undefined
     try{
-      return await Promise.race([this.client.sendCommand(args),new Promise<never>((_,reject)=>{
+      // Raw sendCommand does not inherit withTypeMapping's proxy options.
+      // Decode every bulk string as bytes, including nested EVAL_RO replies.
+      return await Promise.race([this.client.sendCommand(args,{typeMapping:{[RESP_TYPES.BLOB_STRING]:Buffer}}),new Promise<never>((_,reject)=>{
         timer=setTimeout(()=>{
           const error=new AppError('REDIS_TIMEOUT','Redis did not finish the bounded operation in time. The target remains reserved if writes may have begun.')
           this.failure.abort(error);this.abort();reject(error)
@@ -196,7 +198,7 @@ export class RedisAdapter implements EngineAdapter {
     const remaining=(data:Record<string,unknown>)=>Object.fromEntries(Object.entries(data).filter(([,raw])=>{
       const key=raw as KeyDigest;return key.expiresAt<0||key.expiresAt>cutoff
     }).sort(([a],[b])=>a<b?-1:a>b?1:0))
-    const checks={schema:digest(expected.objects)===digest(actual.objects),data:digest(remaining(expected.data))===digest(remaining(actual.data)),sequences:true}
+    const {checks}=manifestComparison({...expected,data:remaining(expected.data)},{...actual,data:remaining(actual.data)})
     return {passed:Object.values(checks).every(Boolean),checks,tableCount:Object.keys(remaining(expected.data)).length,method:'native-redis-DUMP-sha256-and-absolute-expiry',note:'Keys naturally expired by the target atomic validation timestamp are excluded. Live keys must retain native serialization, type and exact absolute expiry. Redis functions/modules and other logical databases are outside this backup.'}
   }
   async close(){

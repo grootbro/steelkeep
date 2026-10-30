@@ -1,7 +1,9 @@
 CREATE ROLE backup_reader LOGIN PASSWORD 'local-reader-only';
 CREATE ROLE restore_writer LOGIN PASSWORD 'local-writer-only';
 CREATE TABLE projects (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name text NOT NULL UNIQUE);
-CREATE TABLE entries (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, project_id integer NOT NULL REFERENCES projects(id), body text NOT NULL, amount numeric(12,2) NOT NULL CHECK (amount >= 0));
+CREATE TABLE entries (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, project_id integer NOT NULL REFERENCES projects(id), body text NOT NULL, legacy_removed text, amount numeric(12,2) NOT NULL CHECK (amount >= 0));
+-- Logical dumps compact dropped-column slots; validation must compare logical ordinals.
+ALTER TABLE entries DROP COLUMN legacy_removed;
 INSERT INTO projects(name) VALUES ('Synthetic recovery fixture');
 INSERT INTO entries(project_id, body, amount) SELECT 1, 'Synthetic record ' || n, n * 1.25 FROM generate_series(1,1000) n;
 GRANT CONNECT ON DATABASE source TO backup_reader;

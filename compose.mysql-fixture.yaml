@@ -1,0 +1,29 @@
+# Source-only optional fixture overlay. No image has been pulled or started.
+# Official Docker Hub tag metadata reviewed 2026-10-31; see infra/mysql8-fixture-README.md.
+services:
+  api:
+    environment: &mysql8_fixture_hosts
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mysql8-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,mssql-fixture,s3
+  worker:
+    environment: *mysql8_fixture_hosts
+  mysql8-fixture:
+    profiles: [mysql8]
+    image: mysql:8.0.46@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_0900_ai_ci, --skip-log-bin]
+    environment:
+      MYSQL_ROOT_PASSWORD: local-mysql8-admin-only
+      MYSQL_ROOT_HOST: "%"
+      TZ: UTC
+    ports: ["127.0.0.1:54379:3306"]
+    volumes:
+      - mysql8-fixture-data:/var/lib/mysql
+      - ./infra/mysql8-fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro
+    healthcheck:
+      # Public synthetic password via environment, never a password argument.
+      # The reader is created after schema/data initialization completes.
+      test: [CMD-SHELL, "MYSQL_PWD=local-mysql8-reader-only mysql --protocol=TCP --host=127.0.0.1 --user=backup_reader --get-server-public-key --database=source_mysql8 --batch --skip-column-names --execute=\"SELECT id FROM projects WHERE name='Synthetic MySQL 8 fixture'\" >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+volumes:
+  mysql8-fixture-data:

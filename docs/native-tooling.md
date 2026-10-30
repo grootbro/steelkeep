@@ -1,10 +1,15 @@
 # Native worker tooling
 
-Status: **source recipe only, 31 October 2026**. `Dockerfile.engines` has not been built, pulled or run. Package-manager resolution, native version checks and backup/restore acceptance remain unperformed. Root integration selects this worker recipe in development and self-hosted Compose; the smaller Alpine worker remains a development alternative.
+Status: **ARM64 image built and used for local PostgreSQL/MariaDB recovery, 31 October 2026**.
+The primary executor observed the Ubuntu `Dockerfile.engines` build and running development
+API/worker. Current `server`/`shared` source is bind-mounted into those containers. This does
+not prove a clean immutable self-hosted image, amd64 delivery or recovery for every packaged
+profile. Development and self-hosted Compose select this recipe; the Alpine alternative remains.
+See the [execution ledger](acceptance.md). This documentation pass did not build or run tooling.
 
 ## Packaged profiles
 
-The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the official `oven/bun` image. Both `linux/amd64` and `linux/arm64` are intended build targets. Bun documents both architectures; this is not a claim that the complete Steelkeep image has passed either architecture's checks. [Bun installation](https://bun.com/docs/installation).
+The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the official `oven/bun` image. Both `linux/amd64` and `linux/arm64` are intended build targets. The local ARM64 image build passed; amd64 remains unbuilt in this record. Bun's platform support does not by itself prove the complete application matrix. [Bun installation](https://bun.com/docs/installation).
 
 | Engine | Tools in this recipe | Additional requirement |
 | --- | --- | --- |
@@ -17,7 +22,7 @@ The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the offici
 | ClickHouse | Existing HTTP adapter and server-native backup | Explicit maintenance assertion and matching shared backup-disk mounts; no CLI required |
 | SQL Server | Helper source included, **no .NET/DacFx binaries** | Explicitly provisioned Linux x64 extension described below |
 
-All product engine profiles still have pending runtime acceptance. Packaging a client does not broaden the adapter's supported server versions, schema features or consistency guarantees.
+PostgreSQL 17 and MariaDB 11 passed real local native MCP recovery with this development runtime. MySQL, MongoDB, SQLite, Redis, ClickHouse and SQL Server recovery remain pending. A successful image build or packaged client does not establish additional server-version, schema or consistency support.
 
 ## Coexisting MySQL and MariaDB
 
@@ -33,7 +38,7 @@ APT uses Ubuntu's normal signed repositories plus three explicitly scoped `signe
 - MariaDB: `https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu`, suite `noble`, component `main`. Reviewed amd64 and arm64 indexes both list `1:11.4.13+maria~ubu2404`. The official [repository setup source](https://r.mariadb.com/downloads/mariadb_repo_setup) names the keyring URL used here. Its separately fetched [published SHA-256](https://supplychain.mariadb.com/mariadb-keyring-2025.gpg.sha256) is `403e0403df51273fbf5613e5644959d3f85923ef7d8f92e7d83eafe289093af4`. [Repository documentation](https://mariadb.com/docs/server/server-management/install-and-upgrade-mariadb/mariadb-package-repository-setup-and-usage).
 - MongoDB: `https://repo.mongodb.org/apt/ubuntu`, suite `noble/mongodb-org/8.0`, component `multiverse`; key `https://pgp.mongodb.com/server-8.0.asc`. The official [Ubuntu 8.0 instructions](https://www.mongodb.com/docs/v8.0/tutorial/install-mongodb-on-ubuntu/) publish this repository and both architectures. The recipe pins **only** `mongodb-database-tools=100.20.0` from it. [Tools platform/version documentation](https://www.mongodb.com/docs/database-tools/).
 
-The following exact package paths and hashes were read from official MongoDB package indexes. The package binaries were **not downloaded**, and repository signatures were not locally verified during this source-only task; APT verification is part of the future image build.
+The following exact package paths and hashes were read from official MongoDB package indexes. During the original source-research step, package binaries were not downloaded and signatures were not independently verified. The later successful ARM64 image build used the signed APT installation path. These index hashes are provenance records, not an additional independent byte-verification report.
 
 | Architecture | URL | SHA-256 from repository index |
 | --- | --- | --- |
@@ -56,11 +61,11 @@ For the current MSSQL profile, explicitly provision a **Linux x64** worker exten
 the official .NET 10 Ubuntu 24.04 SDK/runtime images, publishes the helper and adds
 it to the already built multi-engine image. It refuses a non-amd64 target. It has
 not been built; Microsoft terms, runtime API compatibility and native dependencies
-remain for the authorized build phase. Default Compose does not select this recipe.
+remain unverified for this optional profile. Default Compose does not select this recipe.
 Use a supported physical Linux x64 environment; a Docker platform flag is not proof
 that Microsoft supports an emulated host.
 
-Intended later commands, only after the agreed review/run phase begins:
+Commands for a separate amd64/SQL Server qualification; these remain unexecuted in this record:
 
 ```sh
 docker build --platform linux/amd64 -f Dockerfile.engines -t steelkeep-engines:local .
@@ -80,4 +85,15 @@ pull or runtime check: [SDK tag list](https://mcr.microsoft.com/v2/dotnet/sdk/ta
 
 Development Compose selects `Dockerfile.engines`; self-hosted Compose builds a separate `steelkeep-engines:local` worker image. The image defaults to non-root UID/GID `10001:10001`; Compose overrides the user to match ownership of its protected secret files and mounted databases. Keep the key/token directory private, source mounts read-only where the engine permits, and target/shared-backup mounts restricted to the intended owner/group.
 
-When the user authorizes execution, first build and inspect both architecture images, confirm each native client version, then run real isolated UI/MCP backup → S3 → restore acceptance for each profile. Separately qualify lock interruption/reconciliation, MySQL/MariaDB command separation, SQLite file permissions, ClickHouse shared mounts and the optional SQL Server helper. None of those checks were run in this task.
+Recorded local execution: the ARM64 Ubuntu worker built, Docker API/worker started with
+current source mounts, and PostgreSQL 17/MariaDB 11 passed the native MCP recovery rerun
+(27 assertions). Install, schema migration, typecheck, application build and targeted tests
+also passed. The subsequent real UI recovery suite passed PostgreSQL/MariaDB (2/2, 28.5 s),
+including independent S3 GET/SHA and SQL assertions. Those results are recorded by the primary
+executor, not rerun by this docs edit.
+
+Remaining qualification: amd64 image build; clean immutable self-hosted delivery; exact native
+recovery for MySQL/MongoDB/SQLite/Redis/ClickHouse; provisioned SQL Server helper; remaining engine UI
+recovery and broad responsive/accessibility review; deliberate lock interruption, restart
+and cancellation tests. SQLite mount permissions and ClickHouse shared-spool behavior need their own runs. Existing fixture volumes
+and successful/partial restore targets are preserved.

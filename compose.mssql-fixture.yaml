@@ -1,0 +1,28 @@
+# Explicit optional overlay: SQL Server/DacFx have Microsoft license terms.
+# No build, download or license acceptance happens in the default profile.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mssql
+    image: steelkeep-mssql:local
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3,mssql-fixture
+      STEELKEEP_DACFX_HELPER: /opt/steelkeep-dacfx/Steelkeep.DacFx.dll
+  worker:
+    image: steelkeep-mssql:local
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3,mssql-fixture
+      STEELKEEP_DACFX_HELPER: /opt/steelkeep-dacfx/Steelkeep.DacFx.dll
+  mssql-fixture:
+    image: mcr.microsoft.com/mssql/server:2022-CU23-ubuntu-22.04
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: ${STEELKEEP_MSSQL_ACCEPT_EULA:?Operator must explicitly accept Microsoft SQL Server terms before provisioning}
+      MSSQL_SA_PASSWORD: ${STEELKEEP_MSSQL_SA_PASSWORD:?Set a strong synthetic fixture-only admin password}
+      MSSQL_PID: Developer
+    ports: ["127.0.0.1:54380:1433"]
+    volumes: [mssql-fixture:/var/opt/mssql]
+    # No credential-bearing healthcheck argv. Seed uses bounded driver checks.
+volumes:
+  mssql-fixture:

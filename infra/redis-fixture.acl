@@ -1,6 +1,3 @@
-# Disposable Redis 7.4 fixture credentials; no production credential belongs here.
-# ACLs cannot restrict SELECT to a DB index. The worker additionally verifies its
-# configured selected index and refuses source==target; source 0, initial target 1.
 user default off
 user fixture_admin on >local-redis-admin-only ~* &* +@all
 user backup_reader on >local-redis-reader-only ~* &* -@all +auth +hello +ping +select +client|info +client|setinfo +client|setname +info +time +dbsize +scan +type +memory|usage +dump +pexpiretime +eval_ro

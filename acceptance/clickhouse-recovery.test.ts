@@ -25,7 +25,7 @@ recovery('MCP ClickHouse: native backup → object storage → distinct Atomic t
     return response.json() as Promise<T>
   }
   const client=new Client({name:'steelkeep-clickhouse-acceptance',version:'0.1.0'})
-  await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+token}}}),{mode:'auto'})
+  await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+token}}}))
   async function tool<T>(name:string,args:Record<string,unknown>={}):Promise<T>{
     const result=await client.callTool({name,arguments:args})
     if(result.isError)throw new Error(`MCP ${name} returned a tool error`)

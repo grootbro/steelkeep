@@ -1,5 +1,5 @@
-import {useEffect,useId,useRef,type ReactNode} from 'react'
-import {Activity,ArrowDownToLine,Archive,ChevronRight,LoaderCircle,X} from 'lucide-react'
+import {Fragment,useEffect,useId,useRef,type ReactNode} from 'react'
+import {Activity,ArrowDownToLine,Archive,CheckCircle2,ChevronRight,CircleHelp,LoaderCircle,ShieldAlert,X} from 'lucide-react'
 import type {Job} from './state'
 
 export const date=(value:string|null|undefined)=>value?new Date(value).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}):'—'
@@ -7,6 +7,12 @@ export const bytes=(value:string|number)=>{const n=Number(value);if(!Number.isFi
 export const active=(job:Job)=>['queued','running','cancelling'].includes(job.status)
 export const duration=(job:Job)=>{if(!job.started_at)return '—';const seconds=Math.max(0,Math.floor((new Date(job.finished_at??Date.now()).getTime()-new Date(job.started_at).getTime())/1000));return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`}
 export function Badge({status}:{status:string}){return <span className={`badge ${status}`}><span aria-hidden="true"/>{status.replaceAll('_',' ')}</span>}
+export function ValidationDetails({value}:{value:Record<string,unknown>}){
+  const status=value.status==='passed'&&value.passed===true?'passed':value.status==='failed'||value.passed===false?'failed':value.status==='running'?'running':'unknown'
+  const checks=value.checks&&typeof value.checks==='object'&&!Array.isArray(value.checks)?value.checks as Record<string,unknown>:{}
+  const rows=[['Archive SHA-256',value.integrity==='sha256-matched'?true:undefined],['Schema',checks.schema],['Data',checks.data],['Sequences and identities',checks.sequences]] as const
+  return <section className={`validation-result ${status}`}><h3>{status==='passed'?<CheckCircle2 size={17}/>:status==='failed'?<ShieldAlert size={17}/>:status==='running'?<LoaderCircle className="spin" size={17}/>:<CircleHelp size={17}/>}Restore validation <span>{status==='running'?'In progress':status==='unknown'?'Unconfirmed':status==='passed'?'Passed':'Failed'}</span></h3><dl className="validation-checks">{rows.map(([label,result])=><Fragment key={label}><dt>{label}</dt><dd className={result===true?'verified':result===false?'mismatch':''}>{result===true?'Verified':result===false?'Mismatch':'Not recorded yet'}</dd></Fragment>)}{typeof value.tableCount==='number'&&<><dt>Objects checked</dt><dd>{value.tableCount}</dd></>}</dl>{typeof value.note==='string'&&<p className="form-hint">{value.note}</p>}<details className="validation-evidence"><summary>Validation evidence</summary><pre>{JSON.stringify(value,null,2)}</pre></details></section>
+}
 export function Empty({icon,heading,children,action,compact=false}:{icon:ReactNode;heading:string;children:ReactNode;action?:ReactNode;compact?:boolean}){return <div className={`empty ${compact?'compact':''}`}><div className="empty-icon">{icon}</div><h3>{heading}</h3><p>{children}</p>{action}</div>}
 export function Submit({busy,children,disabled=false}:{busy:boolean;children:ReactNode;disabled?:boolean}){return <button className="primary" disabled={busy||disabled}>{busy&&<LoaderCircle className="spin" size={15}/>} {children}</button>}
 export function Modal({title,onClose,children,wide=false}:{title:string;onClose:()=>void;children:ReactNode;wide?:boolean}){

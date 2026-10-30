@@ -17,15 +17,22 @@ services:
       HOST: 0.0.0.0
       PORT: 4311
     ports: ["127.0.0.1:4311:4311"]
-    volumes: [./.steelkeep:/run/steelkeep:ro]
+    volumes:
+      - ./.steelkeep:/run/steelkeep:ro
+      - ./server:/app/server:ro
+      - ./shared:/app/shared:ro
     depends_on:
       metadata: {condition: service_healthy}
   worker:
+    stop_grace_period: 2m
     profiles: [application]
     image: steelkeep-worker:local
     user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
     environment: *app_environment
-    volumes: [./.steelkeep:/run/steelkeep:ro]
+    volumes:
+      - ./.steelkeep:/run/steelkeep:ro
+      - ./server:/app/server:ro
+      - ./shared:/app/shared:ro
     depends_on:
       metadata: {condition: service_healthy}
       fixture: {condition: service_healthy}

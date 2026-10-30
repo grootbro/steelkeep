@@ -74,6 +74,10 @@ try {
       await sql`CREATE TABLE audit_events(id bigserial PRIMARY KEY,actor text NOT NULL,action text NOT NULL,subject_id uuid,created_at timestamptz NOT NULL DEFAULT now())`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(5)`.execute(trx)
     }
+    if(!versions.has(6)) {
+      await sql`ALTER TABLE connections ADD COLUMN revision integer NOT NULL DEFAULT 1 CHECK(revision>=1),ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now()`.execute(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(6)`.execute(trx)
+    }
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

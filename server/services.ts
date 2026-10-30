@@ -2,14 +2,15 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import {realpath,stat} from 'node:fs/promises'
 import {isAbsolute,relative} from 'node:path'
-import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3'
+import { S3Client, HeadBucketCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { CronExpressionParser } from 'cron-parser'
 import { sql, type Kysely, type Selectable } from 'kysely'
 import type { Schema } from './db'
-import type { ConnectionInput, PlanInput, PlanUpdateInput } from './contracts'
+import type { ConnectionInput, ConnectionUpdateInput, PlanInput, PlanUpdateInput } from './contracts'
 import { allowedHost, identifier, seal, unseal, AppError, safeFailure } from './security'
 import {config} from './config'
 import {resourceKey} from './resources'
+import {probeArtifactAvailability,availabilityStates,type Availability} from './artifact-availability'
 import {AgentServices,audit} from './agents'
 import {authenticateRequest} from './auth'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
@@ -66,6 +67,23 @@ export function safeRun(run:Selectable<Schema['runs']>){const {execution_token:_
 export function validId(id:string){if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))throw new AppError('INVALID_ID','Use a valid UUID.');return id}
 function requestKey(key:string){if(key.length<16||key.length>160||/[\r\n\0]/.test(key))throw new AppError('INVALID_REQUEST_KEY','Use a request key of 16 to 160 characters.');return key}
 
+export type ConnectionRow=Selectable<Schema['connections']>
+export async function lockConnections(db:Kysely<Schema>,ids:string[]){
+ const unique=[...new Set(ids.map(id=>validId(id).toLowerCase()))].sort()
+ const rows=await db.selectFrom('connections').selectAll().where('id','in',unique).orderBy('id','asc').forShare().execute()
+ if(rows.length!==unique.length)throw new AppError('NOT_FOUND','Connection not found.',404)
+ return new Map(rows.map(row=>[row.id,row]))
+}
+function connectionDto(row:ConnectionRow,blocked:boolean){return {id:row.id,name:row.name,kind:row.kind,config:row.config,check_status:row.check_status,checked_at:row.checked_at,created_at:row.created_at,updated_at:row.updated_at,revision:row.revision,blocked}}
+function validateConnectionUpdate(input:ConnectionUpdateInput){
+ if(!input||typeof input!=='object'||Array.isArray(input))throw new AppError('INVALID_CONNECTION_UPDATE','Supply a connection revision and name.')
+ const allowed=['revision','name','user','password','accessKey','secretKey','tls','allowGlobalReadLock','quiescentSource']
+ if(Object.keys(input).some(key=>!allowed.includes(key)))throw new AppError('IMMUTABLE_CONNECTION','Create another connection to change its database, endpoint, engine or restore designation.')
+ if(!Number.isSafeInteger(input.revision)||input.revision<1||typeof input.name!=='string'||!input.name.trim()||input.name.length>80)throw new AppError('INVALID_CONNECTION_UPDATE','Supply a positive revision and a name of 1 to 80 characters.')
+ for(const key of ['user','password','accessKey','secretKey'] as const){if(Object.hasOwn(input,key)&&(typeof input[key]!=='string'||!input[key]!.length||input[key]!.length>(key==='user'?80:1024)||/[\r\n\0]/.test(input[key]!)))throw new AppError('INVALID_CONNECTION_UPDATE','Credential fields must be nonempty strings without line breaks or NUL characters.')}
+ for(const key of ['tls','allowGlobalReadLock','quiescentSource'] as const){if(Object.hasOwn(input,key)&&typeof input[key]!=='boolean')throw new AppError('INVALID_CONNECTION_UPDATE','Connection options must be booleans.')}
+}
+
 export class Services {
  readonly agents:AgentServices
  constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db)}
@@ -81,7 +99,7 @@ export class Services {
   return result
  }
  async connections(){
-  const [rows,blocks]=await Promise.all([this.db.selectFrom('connections').select(['id','name','kind','config','check_status','checked_at','created_at']).orderBy('created_at','desc').execute(),this.db.selectFrom('target_blocks').select(['target_id','resource_key']).execute()])
+  const [rows,blocks]=await Promise.all([this.db.selectFrom('connections').select(['id','name','kind','config','check_status','checked_at','created_at','updated_at','revision']).orderBy('created_at','desc').execute(),this.db.selectFrom('target_blocks').select(['target_id','resource_key']).execute()])
   return rows.map(row=>({...row,blocked:row.kind!=='s3'&&blocks.some(b=>b.resource_key===resourceKey(row))}))
  }
  async connection(id:string){
@@ -133,18 +151,73 @@ export class Services {
   }
   await this.db.transaction().execute(async trx=>{await trx.insertInto('connections').values({id,name:input.name.trim(),kind:input.kind,config:safe,secret:seal(secret),check_status:'untested',checked_at:null}).execute();await audit(trx,actor,'connection.created',id)});return {id}
  }
+ async updateConnection(id:string,input:ConnectionUpdateInput,actor='installation-owner'){
+  validId(id);validateConnectionUpdate(input)
+  return this.db.transaction().execute(async trx=>{
+   const row=await trx.selectFrom('connections').selectAll().where('id','=',id).forUpdate().executeTakeFirst()
+   if(!row)throw new AppError('NOT_FOUND','Connection not found.',404)
+   if(row.revision!==input.revision)throw new AppError('REVISION_CONFLICT','This connection changed. Reload it before saving.',409)
+   const allowed=new Set(['revision','name'])
+   if(row.kind==='s3'){allowed.add('accessKey');allowed.add('secretKey')}
+   else if(row.kind!=='sqlite'){allowed.add('user');allowed.add('password');allowed.add('tls')}
+   if(!row.config.restoreTarget&&['mysql','mariadb','mongodb','redis'].includes(row.kind))allowed.add('allowGlobalReadLock')
+   if(!row.config.restoreTarget&&row.kind==='clickhouse')allowed.add('quiescentSource')
+   if(Object.keys(input).some(key=>!allowed.has(key)))throw new AppError('INAPPLICABLE_FIELD','An edit field does not apply to this connection profile.')
+   if(row.kind!=='redis'&&input.user!==undefined&&!/^[a-zA-Z_][a-zA-Z0-9_.@-]{0,79}$/.test(input.user))throw new AppError('INVALID_CONNECTION_UPDATE','Invalid database user.')
+   const nextConfig={...row.config};let configChanged=false
+   for(const key of ['user','tls','allowGlobalReadLock','quiescentSource'] as const){const previous=key==='allowGlobalReadLock'||key==='quiescentSource'?nextConfig[key]===true:nextConfig[key];if(Object.hasOwn(input,key)&&previous!==input[key]){nextConfig[key]=input[key];configChanged=true}}
+   const secretFields=(['password','accessKey','secretKey'] as const).filter(key=>Object.hasOwn(input,key))
+   let nextSecret=row.secret,secretChanged=false
+   if(secretFields.length){
+    const credentials=unseal<Record<string,unknown>>(row.secret)
+    for(const key of secretFields)if(credentials[key]!==input[key]){credentials[key]=input[key];secretChanged=true}
+    if(secretChanged)nextSecret=seal(credentials)
+   }
+   if(configChanged||secretChanged){
+    const active=await trx.selectFrom('runs').select('id').where('status','in',['queued','running','cancelling']).where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id),eb('target_id','=',id)])).executeTakeFirst()
+    const journal=await trx.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').select('source_blocks.run_id').where('runs.source_id','=',id).executeTakeFirst()
+    if(active||journal)throw new AppError('CONNECTION_BUSY','Credentials and operation settings cannot change while a job or uncertain source lock uses this connection.',409)
+   }
+   const changed=await trx.updateTable('connections').set({name:input.name.trim(),revision:row.revision+1,updated_at:sql`now()`,...(configChanged?{config:nextConfig}:{}),...(secretChanged?{secret:nextSecret}:{}),...(configChanged||secretChanged?{check_status:'untested',checked_at:null}:{})}).where('id','=',id).where('revision','=',input.revision).returningAll().executeTakeFirst()
+   if(!changed)throw new AppError('REVISION_CONFLICT','This connection changed. Reload it before saving.',409)
+   await audit(trx,actor,secretChanged?'connection.credentials.rotated':configChanged?'connection.options.updated':'connection.renamed',id)
+   const blocked=row.kind!=='s3'&&Boolean(await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',resourceKey(row)).executeTakeFirst())
+   return connectionDto(changed,blocked)
+  })
+ }
+ async deleteUnusedConnection(id:string,actor='installation-owner'){
+  validId(id)
+  return this.db.transaction().execute(async trx=>{
+   const row=await trx.selectFrom('connections').select('id').where('id','=',id).forUpdate().executeTakeFirst()
+   if(!row)throw new AppError('NOT_FOUND','Connection not found.',404)
+   const references=await Promise.all([
+    trx.selectFrom('plans').select('id').where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id)])).executeTakeFirst(),
+    trx.selectFrom('runs').select('id').where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id),eb('target_id','=',id)])).executeTakeFirst(),
+    trx.selectFrom('artifacts').select('id').where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id)])).executeTakeFirst(),
+    trx.selectFrom('restore_intents').select('id').where('target_id','=',id).executeTakeFirst(),
+    trx.selectFrom('target_blocks').select('run_id').where('target_id','=',id).executeTakeFirst()
+   ])
+   if(references.some(Boolean))throw new AppError('CONNECTION_IN_USE','This connection is referenced by a plan, operation, artifact or recovery history and must be retained.',409)
+   await trx.deleteFrom('connections').where('id','=',id).execute();await audit(trx,actor,'connection.unused.deleted',id)
+   return {id,deleted:true as const}
+  })
+ }
+ protected async probeConnection(row:ConnectionRow){
+  if(row.kind==='s3'){
+   const client=storageClient(row.config as StorageConfig,unseal<S3Secret>(row.secret));try{await client.send(new HeadBucketCommand({Bucket:(row.config as StorageConfig).bucket}),{abortSignal:AbortSignal.timeout(10000)})}finally{client.destroy()}
+  }else{
+   const {createEngineAdapter}=await import('./engines/index')
+   const client=createEngineAdapter(row.kind,{config:row.config,secret:unseal<Record<string,unknown>>(row.secret),signal:AbortSignal.timeout(30000)})
+   try{await client.connect()}finally{await client.close()}
+  }
+ }
  async testConnection(id:string){
   const row=await this.connection(id)
-  try{
-   if(row.kind==='s3'){
-    const client=storageClient(row.config as StorageConfig,unseal<S3Secret>(row.secret));try{await client.send(new HeadBucketCommand({Bucket:(row.config as StorageConfig).bucket}),{abortSignal:AbortSignal.timeout(10000)})}finally{client.destroy()}
-   }else{
-    const {createEngineAdapter}=await import('./engines/index')
-    const client=createEngineAdapter(row.kind,{config:row.config,secret:unseal<Record<string,unknown>>(row.secret),signal:AbortSignal.timeout(30000)})
-    try{await client.connect()}finally{await client.close()}
-   }
-   await this.db.updateTable('connections').set({check_status:'available',checked_at:new Date()}).where('id','=',id).execute();return {status:'available'}
-  }catch(error){await this.db.updateTable('connections').set({check_status:'failed',checked_at:new Date()}).where('id','=',id).execute();return {status:'failed',error:safeFailure(error).message}}
+  let result:{status:'available'|'failed';error?:string}
+  try{await this.probeConnection(row);result={status:'available'}}catch(error){result={status:'failed',error:safeFailure(error).message}}
+  const updated=await this.db.updateTable('connections').set({check_status:result.status,checked_at:sql`now()`}).where('id','=',id).where('revision','=',row.revision).returning('id').executeTakeFirst()
+  if(!updated)return {status:'stale' as const,error:'The connection changed during this check. Test the current revision again.'}
+  return result
  }
  async plans(){return (await this.db.selectFrom('plans').selectAll().orderBy('created_at','desc').execute()).map(row=>({...row,upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}))}
  async scheduleOccurrences(planId:string){
@@ -155,11 +228,14 @@ export class Services {
  }
  async createPlan(input:PlanInput,actor='installation-owner'){
   if(!input.name.trim())throw new AppError('INVALID_PLAN','Enter a plan name.')
-  const source=await this.connection(input.sourceId),storage=await this.connection(input.storageId)
-  if(source.kind==='s3'||storage.kind!=='s3'||source.config.restoreTarget)throw new AppError('INVALID_PLAN','Choose a source database and S3 storage.')
   try{new Intl.DateTimeFormat('en',{timeZone:input.timezone}).format()}catch{throw new AppError('INVALID_TIMEZONE','Choose an IANA timezone.')}
   const id=randomUUID(),cron=input.cron?.trim()||null,next=cron?nextOccurrence(cron,input.timezone):null
-  await this.db.transaction().execute(async trx=>{await trx.insertInto('plans').values({id,name:input.name.trim(),source_id:source.id,storage_id:storage.id,cron,timezone:input.timezone,enabled:true,next_due:next}).execute();await audit(trx,actor,'plan.created',id)});return {id,nextDue:next}
+  return this.db.transaction().execute(async trx=>{
+   const connections=await lockConnections(trx,[input.sourceId,input.storageId]),source=connections.get(input.sourceId.toLowerCase())!,storage=connections.get(input.storageId.toLowerCase())!
+   if(source.kind==='s3'||storage.kind!=='s3'||source.config.restoreTarget)throw new AppError('INVALID_PLAN','Choose a source database and S3 storage.')
+   await trx.insertInto('plans').values({id,name:input.name.trim(),source_id:source.id,storage_id:storage.id,cron,timezone:input.timezone,enabled:true,next_due:next}).execute();await audit(trx,actor,'plan.created',id)
+   return {id,nextDue:next}
+  })
  }
  async updatePlan(id:string,input:PlanUpdateInput,actor='installation-owner'){
   if(!input.name.trim())throw new AppError('INVALID_PLAN','Enter a plan name.')
@@ -178,7 +254,7 @@ export class Services {
    if(existing){if(existing.plan_id!==planId||existing.type!=='backup')throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to a different operation.',409);return safeRun(existing)}
    const plan=await trx.selectFrom('plans').selectAll().where('id','=',planId).forUpdate().executeTakeFirst()
    if(!plan)throw new AppError('NOT_FOUND','Plan not found.',404)
-   const source=await trx.selectFrom('connections').selectAll().where('id','=',plan.source_id).executeTakeFirstOrThrow(),sourceKey=resourceKey(source)
+   const connections=await lockConnections(trx,[plan.source_id,plan.storage_id]),source=connections.get(plan.source_id)!,sourceKey=resourceKey(source)
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${sourceKey},1))`.execute(trx)
    if(await trx.selectFrom('source_blocks').select('run_id').where('resource_key','=',sourceKey).executeTakeFirst())throw new AppError('SOURCE_BLOCKED','An uncertain source lock requires operator reconciliation before another backup.',409)
    const active=await trx.selectFrom('runs').innerJoin('connections','connections.id','runs.source_id').select(['connections.kind','connections.config']).where('runs.status','in',['queued','running','cancelling']).execute()
@@ -191,10 +267,16 @@ export class Services {
  }
  async prepareRestore(artifactId:string,targetId:string,actor='installation-owner'){
   validId(artifactId);validId(targetId)
-  const {inspectRestore}=await import('./restore'),review=await inspectRestore(this,artifactId,targetId)
-  const id=randomUUID()
-  const intent=await this.db.insertInto('restore_intents').values({id,actor,artifact_id:artifactId,target_id:targetId,review:review as unknown as Record<string,unknown>,fingerprint:review.fingerprint,expires_at:sql<Date>`now()+interval '10 minutes'`,consumed_run_id:null,idempotency_key:null}).returning('expires_at').executeTakeFirstOrThrow()
-  return {intentId:id,expiresAt:new Date(intent.expires_at).toISOString(),review}
+  return this.db.transaction().execute(async trx=>{
+   const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',artifactId).executeTakeFirst()
+   if(!artifact)throw new AppError('NOT_FOUND','Backup not found.',404)
+   await lockConnections(trx,[artifact.source_id,artifact.storage_id,targetId])
+   const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx),artifactId,targetId)
+   const id=randomUUID()
+   const intent=await trx.insertInto('restore_intents').values({id,actor,artifact_id:artifactId,target_id:targetId,review:review as unknown as Record<string,unknown>,fingerprint:review.fingerprint,expires_at:sql<Date>`now()+interval '10 minutes'`,consumed_run_id:null,idempotency_key:null}).returning('expires_at').executeTakeFirstOrThrow()
+   await audit(trx,actor,'restore.review.prepared',id)
+   return {intentId:id,expiresAt:new Date(intent.expires_at).toISOString(),review}
+  })
  }
  async startRestore(intentId:string,key:string,actor='installation-owner'){
   validId(intentId);requestKey(key)
@@ -208,7 +290,7 @@ export class Services {
    const reused=await trx.selectFrom('runs').select('id').where('idempotency_key','=',key).executeTakeFirst()
    if(reused)throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to another operation.',409)
    const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',intent.artifact_id).executeTakeFirstOrThrow()
-   const target=await trx.selectFrom('connections').selectAll().where('id','=',intent.target_id).executeTakeFirstOrThrow()
+   const connections=await lockConnections(trx,[artifact.source_id,artifact.storage_id,intent.target_id]),target=connections.get(intent.target_id)!
    const name=resourceKey(target)
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${name},2))`.execute(trx)
    const blocked=await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',name).executeTakeFirst()
@@ -225,6 +307,34 @@ export class Services {
  }
  async jobs(){return (await this.db.selectFrom('runs').selectAll().orderBy('created_at','desc').limit(100).execute()).map(safeRun)}
  async job(id:string){const run=await this.db.selectFrom('runs').selectAll().where('id','=',validId(id)).executeTakeFirst();if(!run)throw new AppError('NOT_FOUND','Job not found.',404);return {...safeRun(run),events:await this.db.selectFrom('events').selectAll().where('run_id','=',id).orderBy('id','asc').limit(500).execute()}}
+ protected async probeArtifactObject(artifact:Selectable<Schema['artifacts']>,storage:ConnectionRow){
+  let client:S3Client|undefined
+  return probeArtifactAvailability({head:signal=>{
+   if(storage.kind!=='s3')throw new AppError('INVALID_STORAGE','Artifact storage is not an S3 connection.')
+   const settings=storage.config as StorageConfig
+   client=storageClient(settings,unseal<S3Secret>(storage.secret))
+   return client.send(new HeadObjectCommand({Bucket:settings.bucket,Key:artifact.object_key}),{abortSignal:signal})
+  },destroy:()=>client?.destroy()},{size:artifact.size,sha256:artifact.sha256})
+ }
+ async checkArtifactAvailability(id:string,actor='installation-owner'){
+  validId(id)
+  const artifact=await this.db.selectFrom('artifacts').selectAll().where('id','=',id).executeTakeFirst()
+  if(!artifact)throw new AppError('NOT_FOUND','Backup not found.',404)
+  const storage=await this.connection(artifact.storage_id)
+  // Preserve the database timestamp's full precision for concurrent probe ordering.
+  const clock=await sql<{started_at:string}>`SELECT clock_timestamp()::text AS started_at`.execute(this.db),startedAt=clock.rows[0].started_at
+  const observation=await this.probeArtifactObject(artifact,storage)
+  return this.db.transaction().execute(async trx=>{
+   const connections=await lockConnections(trx,[storage.id]),storageUnchanged=connections.get(storage.id)!.revision===storage.revision
+   const updated=storageUnchanged?await trx.updateTable('artifacts').set({availability:observation.availability,checked_at:startedAt}).where('id','=',id).where(eb=>eb.or([eb('checked_at','is',null),eb('checked_at','<=',sql<Date>`${startedAt}::timestamptz`)])).returning(['availability','checked_at']).executeTakeFirst():undefined
+   if(updated){await audit(trx,actor,'backup.availability.checked',id);return {id,...observation,checkedAt:updated.checked_at?new Date(updated.checked_at).toISOString():null,stale:false}}
+   const current=await trx.selectFrom('artifacts').select(['availability','checked_at']).where('id','=',id).executeTakeFirst()
+   if(!current)throw new AppError('NOT_FOUND','Backup not found.',404)
+   await audit(trx,actor,'backup.availability.stale',id)
+   const availability=availabilityStates.includes(current.availability as Availability)?current.availability as Availability:'unknown' as const
+   return {id,availability,checkedAt:current.checked_at?new Date(current.checked_at).toISOString():null,verification:'object-head-only' as const,checks:{objectExists:null,sizeMatches:null,metadataSha256Matches:null},reason:storageUnchanged?'stale_check':'storage_changed',message:storageUnchanged?'A newer check is already recorded. This response shows its stored availability; repeat the check to obtain fresh details.':'The storage connection changed during this check. The stored availability was preserved; check again with current credentials.',stale:true}
+  })
+ }
  async artifacts(){
   const rows=await this.db.selectFrom('artifacts').select(['id','run_id','source_id','storage_id','object_key','size','sha256','engine','server_version','tool_version','created_at','availability','checked_at']).orderBy('created_at','desc').limit(100).execute()
   return Promise.all(rows.map(async row=>({...row,last_restore:await this.db.selectFrom('runs').select(['status','validation','finished_at']).where('artifact_id','=',row.id).where('type','=','restore').orderBy('created_at','desc').executeTakeFirst()??null})))

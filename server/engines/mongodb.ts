@@ -79,7 +79,19 @@ function collectionName(name:string){
   return name
 }
 type Privilege={resource:Record<string,unknown>;actions:string[]}
-type UserStatus={authInfo?:{authenticatedUsers?:{user:string;db:string}[];authenticatedUserPrivileges?:Privilege[]}}
+function privilege(value:unknown):value is Privilege {
+  return plainObject(value)&&plainObject(value.resource)&&Array.isArray(value.actions)&&value.actions.every(action=>typeof action==='string')
+}
+function rawBson(value:unknown):Buffer {
+  if(!Buffer.isBuffer(value))throw new AppError('BSON_UNAVAILABLE','The MongoDB driver did not return raw BSON. Validation cannot safely coerce document types.')
+  return value
+}
+export function mongoFsyncLocked(value:unknown):boolean {
+  if(!plainObject(value)||value.ok!==1||!Array.isArray(value.inprog)||Object.hasOwn(value,'fsyncLock')&&typeof value.fsyncLock!=='boolean')throw new AppError('SOURCE_LOCK_UNCERTAIN','The current MongoDB fsync lock state could not be established.')
+  // MongoDB 8.0 currentOp omits this field when unlocked; omission in a
+  // successfully validated command response is not an unknown lock outcome.
+  return value.fsyncLock===true
+}
 
 export class MongoSession {
   readonly engine='mongodb' as const
@@ -129,9 +141,11 @@ export class MongoSession {
     return {engine:'mongodb',database:this.config.database,serverVersion}
   }
   private async privileges():Promise<Privilege[]>{
-    const status=await this.db().admin().command<UserStatus>({connectionStatus:1,showPrivileges:true},{timeoutMS:commandTimeout})
-    const users=status.authInfo?.authenticatedUsers,privileges=status.authInfo?.authenticatedUserPrivileges
-    if(!users||users.length!==1||users[0]?.user!==this.config.user||users[0]?.db!==(this.config.authDatabase??'admin')||!privileges?.length)fail('AUTHENTICATION_REQUIRED','MongoDB authentication and inspectable effective privileges are required.')
+    const status=await this.db().admin().command({connectionStatus:1,showPrivileges:true},{timeoutMS:commandTimeout})
+    const authInfo:unknown=status.authInfo
+    if(!plainObject(authInfo))throw new AppError('AUTHENTICATION_REQUIRED','MongoDB returned no inspectable authentication information.')
+    const users:unknown=authInfo.authenticatedUsers,privileges:unknown=authInfo.authenticatedUserPrivileges
+    if(!Array.isArray(users)||users.length!==1||!plainObject(users[0])||users[0].user!==this.config.user||users[0].db!==(this.config.authDatabase??'admin')||!Array.isArray(privileges)||!privileges.length||!privileges.every(privilege))throw new AppError('AUTHENTICATION_REQUIRED','MongoDB authentication and inspectable effective privileges are required.')
     return privileges
   }
   async restrictedRestoreRole(){
@@ -179,18 +193,19 @@ export class MongoSession {
   async beginSnapshot():Promise<undefined>{
     if(this.config.restoreTarget)fail('INVALID_SOURCE','A designated MongoDB restore target cannot be backed up.')
     if(this.config.allowGlobalReadLock!==true)fail('SOURCE_LOCK_APPROVAL_REQUIRED','MongoDB backup requires explicit permission for a server-wide fsync write lock, which temporarily blocks writes to every database on that server.')
-    if(!this.options.lockHooks)fail('SOURCE_LOCK_JOURNAL_REQUIRED','MongoDB source locks require durable ownership and interruption recovery hooks before execution.')
+    const lockHooks=this.options.lockHooks
+    if(!lockHooks)throw new AppError('SOURCE_LOCK_JOURNAL_REQUIRED','MongoDB source locks require durable ownership and interruption recovery hooks before execution.')
     if(this.snapshotActive||this.ownsLock||this.lockUnknown)fail('SOURCE_LOCK_UNCERTAIN','This MongoDB session cannot acquire another source lock.')
     await this.identity()
     const privileges=await this.privileges()
     const permitted=(action:string)=>privileges.some(p=>(p.resource.cluster===true||p.resource.anyResource===true)&&(p.actions.includes(action)||p.actions.includes('anyAction')))
     if(['fsync','unlock','inprog'].some(action=>!permitted(action)))fail('SOURCE_PERMISSIONS','MongoDB backup requires explicit fsync, unlock and inprog cluster privileges as well as database read/list privileges.')
     const admin=this.db().admin(),existing=await admin.command({currentOp:1,$all:true},{timeoutMS:commandTimeout})
-    if(typeof existing.fsyncLock!=='boolean')fail('SOURCE_LOCK_UNCERTAIN','The current MongoDB fsync lock state could not be established before acquisition.')
-    if(existing.fsyncLock===true)fail('SOURCE_ALREADY_LOCKED','MongoDB already has an fsync lock. It may belong to another operation; this adapter will not unlock it.')
-    this.lockContext={engine:'mongodb',resourceKey:`mongodb:${this.config.host.toLowerCase()}:${this.config.port}`,serverIdentity:this.sourceProcess!,host:this.config.host,port:this.config.port,database:this.config.database,ownerToken:randomUUID()}
-    await this.options.lockHooks.beforeAcquire(this.lockContext)
-    if(this.signal?.aborted){await this.options.lockHooks.afterRelease(this.lockContext);this.lockContext=undefined;checkAbort(this.signal)}
+    if(mongoFsyncLocked(existing))fail('SOURCE_ALREADY_LOCKED','MongoDB already has an fsync lock. It may belong to another operation; this adapter will not unlock it.')
+    const context:MongoLockContext={engine:'mongodb',resourceKey:`mongodb:${this.config.host.toLowerCase()}:${this.config.port}`,serverIdentity:this.sourceProcess!,host:this.config.host,port:this.config.port,database:this.config.database,ownerToken:randomUUID()}
+    this.lockContext=context
+    await lockHooks.beforeAcquire(context)
+    if(this.signal?.aborted){await lockHooks.afterRelease(context);this.lockContext=undefined;checkAbort(this.signal)}
     try{
       const result=await admin.command({fsync:1,lock:true,fsyncLockAcquisitionTimeoutMillis:10000,comment:'steelkeep-source-snapshot'},{timeoutMS:commandTimeout})
       this.ownsLock=true
@@ -214,7 +229,7 @@ export class MongoSession {
     const process=await this.topology()
     if(process!==this.sourceProcess){this.ownsLock=false;await this.markUncertain('SOURCE_PROCESS_CHANGED');return}
     const state=await this.db().admin().command({currentOp:1,$all:true},{timeoutMS:commandTimeout})
-    if(state.fsyncLock!==true){this.ownsLock=false;await this.markUncertain('SOURCE_LOCK_RELEASED_EXTERNALLY')}
+    if(!mongoFsyncLocked(state)){this.ownsLock=false;await this.markUncertain('SOURCE_LOCK_RELEASED_EXTERNALLY')}
   }
   async finishSnapshot(){
     if(this.monitor){clearInterval(this.monitor);this.monitor=undefined}
@@ -229,7 +244,7 @@ export class MongoSession {
       await cleanup.connect()
       if(await this.topology(cleanup)!==this.sourceProcess){this.ownsLock=false;await this.markUncertain('SOURCE_PROCESS_CHANGED_BEFORE_UNLOCK');fail('SOURCE_LOCK_UNCERTAIN','MongoDB process identity changed before unlock. Reconcile source lock ownership manually.')}
       const admin=cleanup.db('admin'),state=await admin.command({currentOp:1,$all:true},{timeoutMS:commandTimeout})
-      if(state.fsyncLock!==true){this.ownsLock=false;await this.markUncertain('SOURCE_LOCK_LOST_BEFORE_UNLOCK');fail('SOURCE_LOCK_UNCERTAIN','The MongoDB source lock disappeared before cleanup. This backup cannot be published.')}
+      if(!mongoFsyncLocked(state)){this.ownsLock=false;await this.markUncertain('SOURCE_LOCK_LOST_BEFORE_UNLOCK');fail('SOURCE_LOCK_UNCERTAIN','The MongoDB source lock disappeared before cleanup. This backup cannot be published.')}
       const result=await admin.command({fsyncUnlock:1,comment:'steelkeep-source-snapshot-release'},{timeoutMS:commandTimeout})
       this.ownsLock=false
       if(lockCount(result.lockCount)!==0){await this.markUncertain('SOURCE_EXTERNAL_LOCK_REMAINS');fail('SOURCE_LOCK_UNCERTAIN','This operation released its own MongoDB lock, but other locks remain. The source stays blocked for review.')}
@@ -266,10 +281,10 @@ export class MongoSession {
       let count=0,sum=0n,sumSquares=0n
       const cursor=collection.find({},{raw:true,batchSize:128,maxTimeMS:readTimeout,signal:this.signal?AbortSignal.any([this.signal,this.failureSignal]):this.failureSignal})
       try{
-        for await(const raw of cursor){
+        for await(const document of cursor){
           checkAbort(this.signal)
           if(this.failureSignal.aborted)fail('SOURCE_LOCK_UNCERTAIN','Source write lock continuity was lost during manifest capture.')
-          if(!Buffer.isBuffer(raw))fail('BSON_UNAVAILABLE','The MongoDB driver did not return raw BSON. Validation cannot safely coerce document types.')
+          const raw=rawBson(document)
           assertPortableBson(BSON.deserialize(raw,{promoteValues:false,promoteLongs:false,bsonRegExp:true}))
           count++;totalDocuments++;totalBytes+=raw.length
           if(totalDocuments>maximumDocuments||totalBytes>maxArchiveBytes)fail('RESOURCE_LIMIT','MongoDB validation exceeded the 5 million document or 2 GiB uncompressed data limit.')
@@ -278,6 +293,8 @@ export class MongoSession {
       }finally{await cursor.close().catch(()=>{})}
       data[info.name]={documents:String(count),bsonHashSum:sum.toString(16).padStart(64,'0'),bsonHashSquares:sumSquares.toString(16).padStart(64,'0')}
     }
+    // JSONB reloads dictionaries as ordinary objects. Preserve own collection
+    // keys (including __proto__) without a prototype-only validation mismatch.
     return {format:1,...identity,objects,data,sequences:{}}
   }
   async close(){
@@ -335,7 +352,9 @@ export class MongoAdapter extends MongoSession implements EngineAdapter {
     // Only installation-created, SHA-256-verified archives may reach this call;
     // shared restore service checks provenance/download checksum/fencing first.
     // No --drop, --preserveUUID, --oplogReplay, bypass validation or user restore.
-    await runTool(tool.binary,[...credentials.args,'--archive',file,'--gzip',`--nsInclude=${source}.*`,`--nsFrom=${source}.*`,`--nsTo=${this.config.database}.*`,'--stopOnError','--maintainInsertionOrder','--numParallelCollections=1','--numInsertionWorkersPerCollection=1','--writeConcern={"w":1,"j":true}','--quiet'],{env:credentials.env,signal:AbortSignal.any([signal,this.failureSignal])})
+    // --archive has an optional value: MongoDB Tools requires '=' for a file.
+    // Separate argv entries select stdin instead and treat the path as a dump directory.
+    await runTool(tool.binary,[...credentials.args,`--archive=${file}`,'--gzip',`--nsInclude=${source}.*`,`--nsFrom=${source}.*`,`--nsTo=${this.config.database}.*`,'--stopOnError','--maintainInsertionOrder','--numParallelCollections=1','--numInsertionWorkersPerCollection=1','--writeConcern={"w":1,"j":true}','--quiet'],{env:credentials.env,signal:AbortSignal.any([signal,this.failureSignal])})
     return {toolVersion:tool.version}
   }
 }

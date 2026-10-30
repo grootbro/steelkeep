@@ -4,6 +4,7 @@ import {join} from 'node:path'
 import {createReadStream} from 'node:fs'
 import {createHash,randomUUID} from 'node:crypto'
 import {PutObjectCommand,HeadObjectCommand} from '@aws-sdk/client-s3'
+import {sql} from 'kysely'
 import {Services,storageClient,type StorageConfig,type S3Secret} from './services'
 import {AppError,unseal} from './security'
 import {assertArchiveSize,maxArchiveBytes} from './process'
@@ -78,7 +79,7 @@ export async function executeBackup(services:Services,runId:string,token:string,
     await db.transaction().execute(async trx=>{
       const owned=await trx.selectFrom('runs').select(['status','cancel_requested']).where('id','=',runId).where('execution_token','=',token).forUpdate().executeTakeFirstOrThrow()
       if(owned.status!=='running'||owned.cancel_requested||signal.aborted)throw new AppError('CANCELLED','Operation cancelled before publication.')
-      await trx.insertInto('artifacts').values({id:artifactId,run_id:runId,source_id:source.id,storage_id:storage.id,object_key:key,size:String(size),sha256:checksum,engine,server_version:manifest.serverVersion,tool_version:toolVersion,manifest,availability:'present',checked_at:new Date()}).execute()
+      await trx.insertInto('artifacts').values({id:artifactId,run_id:runId,source_id:source.id,storage_id:storage.id,object_key:key,size:String(size),sha256:checksum,engine,server_version:manifest.serverVersion,tool_version:toolVersion,manifest,availability:'present',checked_at:sql<Date>`now()`}).execute()
       await trx.updateTable('runs').set({status:'succeeded',phase:'completed',finished_at:new Date(),artifact_id:artifactId}).where('id','=',runId).where('execution_token','=',token).execute()
       await trx.insertInto('events').values({run_id:runId,phase:'completed',message:'Backup stored with SHA-256 and source validation manifest. Restore has not yet been validated.'}).execute()
     })

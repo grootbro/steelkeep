@@ -24,6 +24,20 @@ services:
     volumes:
       - ./.steelkeep/extra-fixtures/sqlite/source:/var/lib/steelkeep-fixtures/sqlite/source:ro
       - ./.steelkeep/extra-fixtures/sqlite/target:/var/lib/steelkeep-fixtures/sqlite/target:rw
+  sqlite-writer:
+    # Explicit one-off tool only: compose run --rm --no-deps -T sqlite-writer.
+    profiles: [extra-engines-tools]
+    image: steelkeep-worker:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    command: [bun, /opt/steelkeep-tools/sqlite-fixture-writer.ts]
+    network_mode: none
+    stdin_open: true
+    tty: false
+    environment:
+      STEELKEEP_ACCEPTANCE: ${STEELKEEP_ACCEPTANCE:-}
+    volumes:
+      - ./.steelkeep/extra-fixtures/sqlite/source:/var/lib/steelkeep-fixtures/sqlite/source:rw
+      - ./scripts/sqlite-fixture-writer.ts:/opt/steelkeep-tools/sqlite-fixture-writer.ts:ro
   mongodb-fixture:
     profiles: [extra-engines]
     image: mongo:8.0
@@ -45,6 +59,8 @@ services:
       timeout: 5s
       retries: 40
   redis-fixture:
+    # ACL files accept user rules only, not comments. Public disposable credentials.
+    # Redis ACL cannot constrain SELECT to an index; isolated source 0, initial target 1.
     profiles: [extra-engines]
     image: redis:7.4-alpine
     command: [redis-server, --appendonly, "yes", --aclfile, /usr/local/etc/redis/fixture.acl, --databases, "16", --protected-mode, "yes", --bind, 0.0.0.0]

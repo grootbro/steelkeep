@@ -14,6 +14,9 @@ export const connectionInput=t.Union([
  t.Object({name:connectionName.name,kind:t.Literal('s3'),endpoint:t.String({minLength:1,maxLength:2048}),region:t.Optional(t.String({maxLength:80})),bucket:t.String({minLength:3,maxLength:63}),prefix:t.Optional(t.String({maxLength:200})),accessKey:t.String({minLength:1,maxLength:1024}),secretKey:t.String({minLength:1,maxLength:1024})})
 ])
 export type ConnectionInput = typeof connectionInput.static
+export const connectionUpdateInput=t.Object({revision:t.Integer({minimum:1}),name:t.String({minLength:1,maxLength:80}),user:t.Optional(t.String({minLength:1,maxLength:80})),password:t.Optional(t.String({minLength:1,maxLength:1024})),accessKey:t.Optional(t.String({minLength:1,maxLength:1024})),secretKey:t.Optional(t.String({minLength:1,maxLength:1024})),tls:t.Optional(t.Boolean()),allowGlobalReadLock:t.Optional(t.Boolean()),quiescentSource:t.Optional(t.Boolean())},{additionalProperties:false})
+export type ConnectionUpdateInput=typeof connectionUpdateInput.static
+
 export const planInput = t.Object({
   name:t.String({minLength:1,maxLength:80}),sourceId:t.String({format:'uuid'}),
   storageId:t.String({format:'uuid'}),cron:t.Optional(t.Nullable(t.String({maxLength:80}))),timezone:t.String({maxLength:80})
@@ -35,7 +38,7 @@ export const jobResponse=t.Object({
  error_code:t.Nullable(t.String()),error_message:t.Nullable(t.String()),validation:t.Nullable(t.Record(t.String(),t.Unknown())),
  cancel_requested:t.Boolean(),attempt:t.Number(),events:t.Optional(t.Array(t.Object({id:t.Union([t.String(),t.Number()]),run_id:t.String(),phase:t.String(),message:t.String(),created_at:dateResponse})))
 })
-export const connectionResponse=t.Object({id:t.String(),name:t.String(),kind:t.String(),config:t.Record(t.String(),t.Unknown()),check_status:t.String(),checked_at:dateResponse,created_at:dateResponse,blocked:t.Boolean()})
+export const connectionResponse=t.Object({id:t.String(),name:t.String(),kind:t.String(),config:t.Record(t.String(),t.Unknown()),check_status:t.String(),checked_at:dateResponse,created_at:dateResponse,updated_at:dateResponse,revision:t.Integer({minimum:1}),blocked:t.Boolean()})
 export const planResponse=t.Object({id:t.String(),name:t.String(),source_id:t.String(),storage_id:t.String(),cron:t.Nullable(t.String()),timezone:t.String(),enabled:t.Boolean(),next_due:dateResponse,created_at:dateResponse,upcoming:t.Array(t.String()),missed_policy:t.Literal('skip'),overlap_policy:t.Literal('skip')})
 export const artifactResponse=t.Object({id:t.String(),run_id:t.String(),source_id:t.String(),storage_id:t.String(),object_key:t.String(),size:t.String(),sha256:t.String(),engine:t.String(),server_version:t.String(),tool_version:t.String(),created_at:dateResponse,availability:t.String(),checked_at:dateResponse,last_restore:t.Nullable(t.Object({status:t.String(),validation:t.Nullable(t.Record(t.String(),t.Unknown())),finished_at:dateResponse}))})
 export const restorePreparedResponse=t.Object({intentId:t.String(),expiresAt:t.String(),review:t.Record(t.String(),t.Unknown())})
@@ -49,3 +52,5 @@ export const tokenResponse=t.Object({id:t.String(),agent_id:t.String(),name:t.St
 export const issuedTokenResponse=t.Object({id:t.String(),agentId:t.String(),name:t.String(),scopes:t.Array(scopeInput),expiresAt:t.String(),token:t.String(),notice:t.String()})
 export const auditResponse=t.Object({id:t.Union([t.String(),t.Number()]),actor:t.String(),action:t.String(),subject_id:t.Nullable(t.String()),created_at:dateResponse})
 export const sourceBlockResponse=t.Object({resource_key:t.String(),server_identity:t.String(),run_id:t.String(),state:t.String(),reason_code:t.Nullable(t.String()),created_at:dateResponse,updated_at:dateResponse})
+
+export const artifactAvailabilityResponse=t.Object({id:t.String(),availability:t.Union([t.Literal('present'),t.Literal('missing'),t.Literal('changed'),t.Literal('unknown')]),checkedAt:dateResponse,verification:t.Literal('object-head-only'),checks:t.Object({objectExists:t.Nullable(t.Boolean()),sizeMatches:t.Nullable(t.Boolean()),metadataSha256Matches:t.Nullable(t.Boolean())}),reason:t.String(),message:t.String(),stale:t.Boolean()})

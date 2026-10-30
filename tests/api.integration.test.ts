@@ -95,7 +95,8 @@ test('configure scope cannot run or cancel jobs through canonical or slash alias
   for(const route of [`/plans/${randomUUID()}/run`,`/jobs/${randomUUID()}/cancel`]){
    for(const suffix of ['', '/']){
     const response=await app.handle(new Request('http://localhost/api/v1'+route+suffix,{method:'POST',headers:{authorization:'Bearer '+scopedToken,'content-type':'application/json'},body:JSON.stringify({idempotencyKey:randomUUID()})}))
-    expect(suffix?[403,404].includes(response.status):response.status===403).toBe(true)
+    if(suffix)expect([403,404]).toContain(response.status)
+    else expect(response.status).toBe(403)
    }
   }
  }finally{

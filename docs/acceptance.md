@@ -1,61 +1,142 @@
 # Acceptance ledger
 
-31 October 2026. The full goal remains active. Current user direction: finish code and
-design before running or opening anything. Therefore these are outstanding proof obligations,
-not checked boxes and not a reason to reduce scope.
+31 October 2026. The owner authorized local install, build/checks and isolated fixture
+services to provide a working preview. The full eight-engine goal remains active.
+
+This execution record comes from the primary executor's observed local run in this chat.
+This documentation pass read the harnesses and artifact paths without rerunning commands.
+Results apply to that checkout and fixture environment; later source changes need their own checks.
+
+## Recorded local evidence
+
+| Execution | Recorded result | Scope |
+| --- | --- | --- |
+| `bun install --frozen-lockfile` | Passed | Current dependency lock |
+| `bun scripts/setup-local.ts` | Passed; existing key/token preserved | Local setup, no fixture-volume reset |
+| Base Compose stack | PostgreSQL 17, MariaDB 11 and RustFS healthy | Isolated synthetic services |
+| Metadata migration | Through version 6 passed | Revision-aware connection schema included |
+| `bun run typecheck` and `bun run build` | Passed | Current local application source |
+| `bun run test` | Latest 18 tests, 68 assertions passed | Unit coverage; not native recovery |
+| `bun run typecheck:acceptance` | Passed | Acceptance harnesses, Playwright config and setup scripts included |
+| `bun run test:integration` | 34 tests, 209 assertions passed | Guarded metadata/API/MCP contracts, credentials, connection lifecycle and mocked HEAD observations |
+| `Dockerfile.engines` | Ubuntu native ARM64 worker image built | Package resolution/build; not an amd64 or eight-engine runtime pass |
+| API and worker | Running in Docker with fresh `server`/`shared` source bind mounts | Development runtime, not a clean immutable packaged release |
+| `acceptance/mcp-recovery.test.ts` rerun | Both PostgreSQL 17 and MariaDB 11 scenarios passed, 27 assertions | Native dump → S3 → worker download/SHA gate → separate precreated target → manifest validation |
+| Independent SQL in MCP harness | Passed | PG: 1,000 entries, `625625.00` sum, next project identity 2. MariaDB: 3 entries, `7.5` sum |
+| Headless browser smoke | Login and six main sections rendered | [Overview screenshot](../output/playwright/local-overview.png); render evidence, separate from recovery below |
+| `acceptance/ui/recovery.spec.ts` | 2/2 scenarios passed in 28.5 s (PG 14.2 s; MariaDB 13.5 s) | Real forms/jobs/S3/restore; independent object download and SQL, no mocked worker success |
+| Authenticated Scalar `/openapi` | API heading and full operation list rendered; zero page errors | Same-origin local bundle, real headless browser |
+
+Preview: [http://127.0.0.1:4310](http://127.0.0.1:4310).
+
+The MCP recovery runs also confirmed stable backup/restore request keys and refusal to
+reuse the occupied destination. Target databases and recovery history are retained.
+The worker verified downloaded-byte SHA-256 before target writes and compared manifests;
+the harness independently queried recovered counts/sums and the PostgreSQL identity.
+That distinction matters: the MCP harness is not an independent full-object download check.
+
+The UI suite created its own synthetic source/target connections and S3 buckets through the
+real forms. It checked metadata-only HEAD messaging separately from an independent S3 GET
+and SHA-256, enforced the restore review checkbox, and observed schema/data/sequence results
+in the UI. Direct SQL confirmed PostgreSQL's 1,000 rows, `625625.00`, dropped-column logical
+layout, Unicode/bytea and next identity 2; MariaDB's 3 rows, `7.5`, FK/CHECK behavior and
+auto-increment 41. Sources, targets, roles, buckets and history are retained. These are the
+two local profiles covered; responsive/physical-device and broad accessibility acceptance
+are still separate.
+
+The executor found and fixed JSONB object-key-order sensitivity in manifest comparison
+using standard deep comparison, and quoted the MariaDB `rows` alias. The passing rerun
+covers those fixes. The UI harness's select locator was corrected to use the real browser
+combobox role/name; that is not a general accessibility audit. The integration group was
+rerun after the comparison fix and again passed 34 tests / 209 assertions. Source-authored
+assertions alone were not counted as execution.
+
+## Remaining proof gates
 
 | Requirement | Necessary evidence | Current status |
 | --- | --- | --- |
-| Start + Elysia + TanStack DB | Install/build/typecheck with current lock, real route data and stale/error states | Earlier foundation built; current code unverified |
-| Reference-quality UI | Desktop/mobile comparison against Databasement and Salt, keyboard/modal states | Rewritten source; visual review postponed |
-| PG backup/restore | Real native dump, S3 upload/download, checksum, separate empty target, schema/data/sequence/constraint comparison | Implementation in progress; no accepted restore |
-| MySQL and MariaDB | Equivalent native pipelines with exact server/client matrix and InnoDB constraints | Adapters written; unrun |
-| MongoDB | Native archive, BSON/index/options match, lock acquisition/release loss and SIGKILL reconciliation, sentinel/restricted target | Adapter and durable lock journal written; unrun |
-| SQLite | Online snapshot, WAL fixture, implicit rowids, identity/FK checks; symlink/hardlink/path guards | Adapter written; unrun |
-| Redis | Atomic DUMP capture, binary keys/types/streams, absolute TTL including expired keys; no FLUSH/REPLACE | Bounded logical profile written; unrun |
-| ClickHouse | Native disk archive, shared-spool setup, ASYNC result reconciliation and independent RowBinary validation | Adapter in static integration; unrun |
-| SQL Server | Supported x64 helper packaging, read-only source BACPAC, empty target import, exact data/schema/identities, interrupted import | Helper and adapter source written; uncompiled/unrun |
-| AI-agent access | Named identities, one-time hashed tokens, scope denial, expiry, delegation/revocation, safe audit, UI and MCP management | Source and targeted tests written; unrun |
-| Durable jobs | Kill/restart on dump/upload/commit boundaries; no lost job, false success or restore replay | Static design only after current changes |
-| Schedules | Timezone/DST/missed/overlap cases, unique occurrence under concurrency | Source present; runtime evidence pending |
-| Secrets | Credentials absent from UI/API/MCP/errors/logs; ciphertext corruption rejected; key recovery documented | Earlier foundation checks only |
-| Target protection | Source alias, metadata, nonempty/unknown target, version and privilege failures | Source present; refusal cases need execution |
-| Retries/cancellation | Bounded safe backup retries, confirmed process-group stop, interrupted target remains blocked | Worker source updated; failure injection pending |
-| REST/OpenAPI | Real response/schema correspondence, errors, pagination, stable operation IDs and auth | Earlier basic spec passed; current contracts unverified |
-| MCP | Official client discovery and same backup/restore flow; scoped denial and idempotency | Source present; end-to-end proof pending |
-| Self-hosted delivery | Clean isolated compose setup + packaged single-origin UI/API/MCP + separate worker | Docker/runbook source present; clean packaged run pending |
-| No collateral changes | No production, real credentials, existing project edits, deployment or spend | All work scoped to Steelkeep and its docs |
+| Start + Elysia + TanStack DB | Current install/build/typecheck, real route data and stale/error states | Install/build/typecheck and route smoke passed; broader UX/state acceptance pending |
+| Reference-quality UI | Desktop/mobile comparison against Databasement and Salt, keyboard/modal states | Functional UI recovery/render passed; visual/responsive/a11y acceptance pending |
+| PostgreSQL 17 | Native recovery plus independent schema/data/sequence checks and adverse cases | Local MCP and real UI recovery passed; native adverse/failure injection pending |
+| MariaDB 11 | Native InnoDB recovery with exact client/server constraints | Local MCP and real UI recovery passed; native adverse cases pending |
+| MySQL 8 | Independent MySQL client/server pipeline, exact types/constraints and auto-increment | Adapter/tools packaged; exact-profile recovery unrun |
+| MongoDB | Native archive, BSON/index/options match, source-lock loss/SIGKILL reconciliation, sentinel/restricted target | 8.0.34 / Tools100.20 native MCP recovery passed; lock-loss/SIGKILL matrix pending |
+| SQLite | Online/WAL snapshot, implicit rowids, identity/FK checks, path/symlink/hardlink guards | Linux-writer live-WAL MCP recovery, rowids, identity/FK and hard-link refusal passed; broader fault/path matrix pending |
+| Redis | Atomic DUMP capture, binary keys/types/streams, absolute TTL including expiry; no FLUSH/REPLACE | 7.4.12 native MCP recovery passed including binary keys/types and exact expiry; Redis8/fault matrix pending |
+| ClickHouse | Native disk archive, shared spool, ASYNC reconciliation and independent data checks | Adapter/fixture present; recovery unrun |
+| SQL Server | Supported physical Linux x64 helper, read-only source BACPAC, empty target import and independent validation | Helper/adapter source present; compile/package/permission/recovery proof pending |
+| AI-agent access | Scope denial, expiry, delegation/revocation, audit, UI and MCP management | Targeted metadata/API/MCP tests passed; complete browser management workflow pending |
+| Durable jobs | Kill/restart on dump/upload/commit boundaries; no lost job, false success or restore replay | Real ordinary jobs passed; crash/restart injection pending |
+| Schedules | Timezone/DST/missed/overlap and unique occurrence under concurrency | Relevant unit/integration cases passed; real scheduled native execution pending |
+| Secrets | No credentials in responses/errors/logs, ciphertext protection, key recovery | Targeted tests passed; complete operational/log/key-recovery audit pending |
+| Connection lifecycle | CAS, secret preservation, active/journal guards, stale checks, immutable identity and history-preserving removal | Guarded targeted integration cases passed; full browser workflow pending |
+| Artifact availability | Present/missing/changed/unknown, bounded HEAD, denied/timeout unknown, stale/credential races | Mock-provider/metadata tests plus real UI HEAD and independent GET/SHA passed; real deletion/denial matrix pending |
+| Target protection | Source aliases, metadata, nonempty/unknown target, version and privilege failures | MCP occupied-target refusal and targeted cases passed; full refusal matrix pending |
+| Retries/cancellation | Safe bounded retries, confirmed process-group stop, partial target retained | Ordinary success/idempotency passed; cancellation/late-result/failure injection pending |
+| REST/OpenAPI | Actual schema correspondence, auth, errors and stable operation IDs | Targeted integration and authenticated local Scalar browser render passed; full packaged delivery pending |
+| MCP | Official-client discovery, same native flow, scope denial and idempotency | Five ordinary native engine profiles passed; MySQL/ClickHouse/MSSQL and adverse cases pending |
+| Self-hosted delivery | Clean isolated Compose, packaged single-origin UI/API/MCP and separate immutable worker | ARM64 worker build and source-mounted development runtime passed; clean packaged self-host pending |
+| No collateral changes | Preserve data/volumes; no production, deployment, publication or paid services | Local synthetic scope retained |
 
-Do not mark the goal complete until all required evidence exists. A lint/typecheck, screenshot,
-API 200, S3 HEAD, SHA metadata or successful CLI exit alone cannot stand in for recovered data.
+A lint/typecheck, screenshot, API 200, S3 HEAD, metadata digest or zero native-tool exit
+cannot replace recovered-data evidence. Passing fixture profiles do not establish
+support for all eight engines, arbitrary schemas, production or business-level recovery.
 
-## Later failure matrix
+## Outstanding adverse-case matrix
 
 Invalid source/S3 credentials; forbidden bucket; disk/file budget; stalled child process;
-corrupt archive; source=target by alias; unsupported version; nonempty target; incompatible
-extensions/ACL; cancellation before and during SQL; worker kill; metadata connection loss;
-late completion from old ownership token; duplicate API/MCP requests; UI disconnect;
-schedule timezone/DST gaps/folds; missing S3 object and unknown availability.
+corrupt archive; source=target aliases; unsupported version; nonempty or uncertain target;
+unsupported extensions/ACL; cancellation before/during writes; worker kill; metadata connection
+loss; late completion after ownership transfer; duplicate API/MCP requests; UI disconnect;
+real scheduled jobs across timezone/DST/missed/overlap boundaries; missing real S3 objects.
 
-All data for these checks must remain synthetic and isolated. Test fixture database creation
-is performed by the harness/admin before the app sees the target, never by restore itself.
+Some input, scope, idempotency and mocked provider cases have targeted test evidence above.
+The full native failure-injection matrix has not passed. Keep all such checks synthetic and
+isolated. Harness/admin setup precreates test targets; restore does not create or clean them.
 
-## Authored harnesses, still unrun
+## Harness inventory
 
-- `acceptance/mcp-recovery.test.ts`: PostgreSQL and MariaDB native dump → S3 →
-  restore, stable request keys and independent data/sequence checks.
+- `acceptance/mcp-recovery.test.ts`: PostgreSQL and MariaDB ordinary native recovery passed
+  in the recorded rerun; target fixtures are intentionally retained.
+- `tests/api.integration.test.ts`, `tests/connections.integration.test.ts` and
+  `tests/artifact-availability.integration.test.ts`: guarded `synthetic-local` metadata tests
+  passed as the 34-test integration group. HEAD provider mocks are contract evidence only.
+- Unit script sources, including manifest/lock regression tests: latest 18 tests / 68 assertions passed.
+- `acceptance/ui/recovery.spec.ts`: both real UI recovery scenarios passed (2/2); independent
+  S3 GET/SHA and SQL checks distinguish this from render-only smoke. [Harness details](../acceptance/ui/README.md).
 - `compose.extra-engines.yaml`, `scripts/seed-extra-fixtures.ts` and
-  `acceptance/extra-engines.test.ts`: isolated MongoDB, Redis and SQLite fixtures;
-  independent downloaded S3 SHA-256, BSON/indexes, binary keys/TTL/types, WAL/rowids,
-  identity and FK assertions. Explicit `synthetic-local-extra` opt-in only.
+  `acceptance/extra-engines.test.ts`: MongoDB, Redis and SQLite passed 3 tests / 106 assertions;
+  explicit `synthetic-local-extra` opt-in. SQLite then passed 35 assertions with an additional
+  exact live-WAL row-count check. The one-off Linux writer is `scripts/sqlite-fixture-writer.ts`.
 - `compose.clickhouse-fixture.yaml` and `acceptance/clickhouse-recovery.test.ts`:
-  exact 25.8 LTS fixture, restricted direct roles, shared spool, MCP and independent
-  JSON/Native-format data comparisons. Explicit `synthetic-local-clickhouse` opt-in.
-- `tests/api.integration.test.ts`: explicit `synthetic-local` mode and fixed
-  loopback metadata identity. Default unit test script cannot start metadata tests.
-- `Dockerfile.engines` and optional `Dockerfile.mssql`: source-only native tooling
-  recipes. No image build, native version check or DacFx compilation has run.
+  ClickHouse 25.8 LTS recovery pending; `synthetic-local-clickhouse` opt-in.
+- `compose.mysql-fixture.yaml` and `acceptance/mysql8-recovery.test.ts`: MySQL 8.0.46 independent
+  recovery pending; packaging a MySQL client does not execute that harness.
+- `compose.mssql-fixture.yaml`, `acceptance/mssql-recovery.test.ts` and `Dockerfile.mssql`:
+  optional provisioned SQL Server profile remains unrun, including restricted-source export.
+- `Dockerfile.engines`: ARM64 build passed; the clean immutable delivery path and other
+  architecture/profile matrices remain outstanding.
 
-Separate MySQL 8 and SQL Server fixtures and their executed data-recovery acceptance
-remain outstanding. UI browser acceptance and crash/restart/cancellation injection
-remain outstanding for every new engine. Source-authored assertions are not a pass.
+## Extra-engine execution notes
+
+MongoDB 8.0.34 / Tools100.20 passed full native archive recovery, independent lossless
+EJSON documents, ordered compound indexes/options, restricted sentinel target, source
+preservation, source-alias and occupied-target refusal. Read-only checks established that
+the initial currentOp failure happened before lock acquisition; no journal/unlock cleanup
+was needed. Fixed omitted unlocked `fsyncLock`, optional-valued `--archive=<file>` syntax,
+and shared comparison of JSON-persisted values rather than JS prototypes. Old failed jobs
+and their blocked targets remain untouched.
+
+Redis 7.4.12 passed independent S3 GET/SHA, binary keys/payloads, hashes/lists/sets/sorted
+sets/streams, exact absolute expiry and natural expiry before restore. Explicit per-command
+node-redis type mapping keeps raw DUMP bytes binary-safe. ACL fixture files accept user
+rules only; comments were moved into Compose.
+
+SQLite uses Bun's 3.53.2 inspector and native sqlite3 3.45.1 online backup/restore. The first
+macOS-writer/Linux-reader live-WAL run missed the new marker; a later unchanged rerun passed.
+The underlying cross-platform cause was not established and that first run is not accepted
+proof. The harness now starts its fixture writer in Linux, commits/holds a live WAL, and
+checks the exact recovered marker/blob/count, rowids, identity 11, FK/integrity, user_version,
+occupied-target preservation and hard-link refusal. That profile passed in the combined
+group and a subsequent 35-assertion run. It does not qualify cross-kernel/network-filesystem
+SQLite access or crash consistency.

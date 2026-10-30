@@ -5,16 +5,23 @@ import type {DatabaseKind} from '../shared/engines'
 
 export type JobStatus='queued'|'running'|'cancelling'|'succeeded'|'failed'|'cancelled'|'interrupted'
 export type Job={id:string;type:string;status:JobStatus;phase:string;plan_id:string|null;source_id:string;storage_id:string;created_at:string;started_at:string|null;finished_at:string|null;heartbeat_at:string|null;error_message:string|null;attempt:number;target_id?:string|null;validation?:Record<string,unknown>|null}
-export type Connection={id:string;name:string;kind:DatabaseKind|'s3';blocked?:boolean;config:Record<string,unknown>;check_status:string;checked_at:string|null}
+export type Connection={id:string;name:string;kind:DatabaseKind|'s3';revision:number;updated_at:string;blocked?:boolean;config:Record<string,unknown>;check_status:string;checked_at:string|null}
 export type Plan={id:string;name:string;source_id:string;storage_id:string;cron:string|null;timezone:string;next_due:string|null;enabled:boolean;upcoming?:string[]}
-export type Artifact={id:string;source_id:string;run_id:string;size:string;sha256:string;created_at:string;availability:string;engine:string;storage_id:string;last_restore?:{status:string;validation:Record<string,unknown>|null;finished_at:string|null}|null}
+export type Artifact={id:string;source_id:string;run_id:string;size:string;sha256:string;created_at:string;checked_at:string|null;availability:string;engine:string;storage_id:string;last_restore?:{status:string;validation:Record<string,unknown>|null;finished_at:string|null}|null}
+export type ArtifactCheck={id:string;availability:'present'|'missing'|'changed'|'unknown';checkedAt:string|null;verification:'object-head-only';checks:{objectExists:boolean|null;sizeMatches:boolean|null;metadataSha256Matches:boolean|null};reason:string;message:string;stale:boolean}
 export type ActivityDay={date:string;backup:number;restore:number;failed:number}
 export type RestoreIntent={intentId:string;expiresAt:string;review:{artifactId:string;targetId:string;fingerprint:string;engine:string;sourceDatabase:string;targetDatabase:string;serverVersion?:string;sourceVersion?:string;targetVersion?:string;warnings?:string[];checks:unknown}}
 export type Overview={jobs:Job[];connections:Connection[];plans:Plan[];backups:Artifact[];serverTime:string;activity?:ActivityDay[];activityWindow?:{from:string;to:string;timezone:string};jobSummary?:{windowDays:number;total:number;succeeded:number;failed:number;cancelled:number;interrupted:number;active:number;scope:string};storageSummary?:{bytes:string;count:number;scope:string}}
-export class ApiError extends Error {constructor(message:string,public status:number){super(message)}}
-export async function api<T>(path:string,body?:unknown,method?:'POST'|'PATCH'):Promise<T>{
+export class ApiError extends Error {constructor(message:string,public status:number,public code?:string){super(message)}}
+export async function api<T>(path:string,body?:unknown,method?:'POST'|'PATCH'|'DELETE'):Promise<T>{
   const response=await fetch('/api/v1'+path,{method:method??(body===undefined?'GET':'POST'),headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})
-  if(!response.ok){const value=await response.json().catch(()=>null);throw new ApiError(value?.error?.message??'The server is unavailable. Try again.',response.status)}
+  if(!response.ok){
+    const value:unknown=await response.json().catch(()=>null)
+    const error=value&&typeof value==='object'&&'error' in value?value.error:undefined
+    const message=error&&typeof error==='object'&&'message' in error&&typeof error.message==='string'?error.message:'The server is unavailable. Try again.'
+    const code=error&&typeof error==='object'&&'code' in error&&typeof error.code==='string'?error.code:undefined
+    throw new ApiError(message,response.status,code)
+  }
   return response.status===204?undefined as T:response.json()
 }
 export const queryClient=new QueryClient({defaultOptions:{queries:{retry:false,refetchOnWindowFocus:true}}})

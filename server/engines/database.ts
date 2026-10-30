@@ -3,6 +3,7 @@ import mysql,{type RowDataPacket,type Connection} from 'mysql2/promise'
 import {writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {createHash} from 'node:crypto'
+import {isDeepStrictEqual} from 'node:util'
 import type {DatabaseConfig,DbSecret} from '../services'
 import {AppError,allowedHost,identifier} from '../security'
 import {runTool,toolEnv} from '../process'
@@ -56,6 +57,7 @@ export class DatabaseSession {
         ssl:this.config.tls?{rejectUnauthorized:true,verifyIdentity:true}:undefined,connectTimeout:5000,multipleStatements:false,supportBigNumbers:true,bigNumberStrings:true,dateStrings:true,timezone:'Z'})
       this.maria.on('error',this.connectionLost)
       await this.query("SET time_zone = '+00:00'")
+      if(this.engine==='mysql')await this.query('SET SESSION information_schema_stats_expiry=0')
     }
     this.signal?.addEventListener('abort',this.abort,{once:true})
     checkSignal(this.signal)
@@ -152,6 +154,7 @@ export class DatabaseSession {
     return this.engine==='postgres'?this.pgManifest(identity):this.myManifest(identity)
   }
   private async pgManifest(identity:Identity):Promise<Manifest>{
+    // Native logical restore compacts dropped-column slots; compare visible logical ordinals.
     const namespace="n.nspname<>'information_schema' AND n.nspname !~ '^pg_'"
     const tables=await this.query(`SELECT n.nspname AS schema,c.relname AS name,c.relkind AS kind,c.relispopulated FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE ${namespace} AND c.relkind IN ('r','p','m') ORDER BY n.nspname,c.relname`)
     if(tables.length>500)fail('RESOURCE_LIMIT','This release limits a backup to 500 tables.')
@@ -163,7 +166,7 @@ export class DatabaseSession {
     if(largeObjects.length)fail('UNSUPPORTED_SCHEMA','PostgreSQL large objects require separate recovery validation and are not supported in this release. Bytea columns are supported.')
     const objects:Record<string,unknown>={
       schemas:await this.query(`SELECT n.nspname AS name FROM pg_namespace n WHERE ${namespace} ORDER BY n.nspname`),
-      columns:await this.query(`SELECT n.nspname AS schema,c.relname AS table_name,a.attname AS name,a.attnum,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull,a.attidentity,a.attgenerated,pg_get_expr(d.adbin,d.adrelid) AS default_value FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE ${namespace} AND c.relkind IN ('r','p','m','c') AND a.attnum>0 AND NOT a.attisdropped ORDER BY n.nspname,c.relname,a.attnum`),
+      columns:await this.query(`SELECT n.nspname AS schema,c.relname AS table_name,a.attname AS name,(row_number() OVER (PARTITION BY c.oid ORDER BY a.attnum))::integer AS attnum,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull,a.attidentity,a.attgenerated,pg_get_expr(d.adbin,d.adrelid) AS default_value FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE ${namespace} AND c.relkind IN ('r','p','m','c') AND a.attnum>0 AND NOT a.attisdropped ORDER BY n.nspname,c.relname,a.attnum`),
       constraints:await this.query(`SELECT n.nspname AS schema,c.relname AS table,k.conname AS name,pg_get_constraintdef(k.oid,true) AS definition FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE ${namespace} ORDER BY n.nspname,c.relname,k.conname`),
       indexes:await this.query(`SELECT n.nspname AS schema,c.relname AS table,i.relname AS name,pg_get_indexdef(i.oid) AS definition FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE ${namespace} ORDER BY n.nspname,c.relname,i.relname`),
       views:await this.query(`SELECT n.nspname AS schema,c.relname AS name,c.relkind,pg_get_viewdef(c.oid,true) AS definition FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE ${namespace} AND c.relkind IN ('v','m') ORDER BY n.nspname,c.relname`),
@@ -207,7 +210,7 @@ export class DatabaseSession {
       if(columns.length>512)fail('RESOURCE_LIMIT','This release limits each table to 512 columns.')
       const rowExpression=columns.map(c=>`IFNULL(HEX(CAST(${myName(String(c.name))} AS BINARY)),'~')`).join(',')
       const hash=`MD5(CONCAT_WS('#',${rowExpression}))`
-      const [sum]=await this.query(`SELECT CAST(count(*) AS CHAR) AS rows,CAST(COALESCE(sum(CAST(CONV(SUBSTR(${hash},1,15),16,10) AS DECIMAL(65,0))),0) AS CHAR) AS hash_a,CAST(COALESCE(sum(CAST(CONV(SUBSTR(${hash},16,15),16,10) AS DECIMAL(65,0))),0) AS CHAR) AS hash_b FROM ${name}`)
+      const [sum]=await this.query(`SELECT CAST(count(*) AS CHAR) AS \`rows\`,CAST(COALESCE(sum(CAST(CONV(SUBSTR(${hash},1,15),16,10) AS DECIMAL(65,0))),0) AS CHAR) AS hash_a,CAST(COALESCE(sum(CAST(CONV(SUBSTR(${hash},16,15),16,10) AS DECIMAL(65,0))),0) AS CHAR) AS hash_b FROM ${name}`)
       data[name]=sum
       const [state]=await this.query('SELECT CAST(auto_increment AS CHAR) AS next_value FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?',[table.name])
       sequences[name]=state
@@ -223,7 +226,9 @@ export class DatabaseSession {
 }
 
 export function manifestComparison(expected:Manifest,actual:Manifest){
-  const checks={schema:digest(expected.objects)===digest(actual.objects),data:digest(expected.data)===digest(actual.data),sequences:digest(expected.sequences)===digest(actual.sequences)}
+  // Compare the JSON representation persisted in JSONB, not key order or JS prototypes.
+  const same=(a:unknown,b:unknown)=>isDeepStrictEqual(JSON.parse(JSON.stringify(a)),JSON.parse(JSON.stringify(b)))
+  const checks={schema:same(expected.objects,actual.objects),data:same(expected.data,actual.data),sequences:same(expected.sequences,actual.sequences)}
   return {passed:Object.values(checks).every(Boolean),checks,tableCount:Object.keys(expected.data).length,method:'row-count-and-order-independent-row-digests',note:'Data digests detect accidental recovery differences; they are not a cryptographic proof against deliberately colliding source data.'}
 }
 
@@ -235,7 +240,8 @@ export async function nativeCredentials(engine:Engine,c:DatabaseConfig,s:DbSecre
     return {env:toolEnv({PGPASSFILE:path,PGSSLMODE:c.tls?'verify-full':'disable',PGCONNECT_TIMEOUT:'10',PGOPTIONS:'-c timezone=UTC -c datestyle=ISO,YMD -c extra_float_digits=3 -c intervalstyle=postgres -c search_path=pg_catalog -c bytea_output=hex -c lc_monetary=C'}),args:['--host',c.host,'--port',String(c.port),'--username',c.user,'--dbname',c.database,'--no-password']}
   }
   const path=join(dir,'client.cnf'),escape=(v:string)=>'"'+v.replaceAll('\\','\\\\').replaceAll('"','\\"')+'"'
-  await writeFile(path,`[client]\nhost=${escape(c.host)}\nport=${c.port}\nuser=${escape(c.user)}\npassword=${escape(s.password)}\nprotocol=tcp\n${engine==='mysql'?`ssl-mode=${c.tls?'VERIFY_IDENTITY':'DISABLED'}`:`ssl=${c.tls?'true':'false'}\nssl-verify-server-cert=${c.tls?'true':'false'}`}\n`,{mode:0o600,flag:'wx'})
+  const transport=engine==='mysql'?`ssl-mode=${c.tls?'VERIFY_IDENTITY':'DISABLED'}${c.tls?'':'\nget-server-public-key=TRUE'}`:`ssl=${c.tls?'true':'false'}\nssl-verify-server-cert=${c.tls?'true':'false'}`
+  await writeFile(path,`[client]\nhost=${escape(c.host)}\nport=${c.port}\nuser=${escape(c.user)}\npassword=${escape(s.password)}\nprotocol=tcp\n${transport}\n`,{mode:0o600,flag:'wx'})
   return {env:toolEnv(),args:[`--defaults-file=${path}`,...(engine==='mysql'?['--no-login-paths']:[])]}
 }
 

@@ -2,36 +2,42 @@
 
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
 
-**In development. Current code has not passed product acceptance.** The owner requested
-code/design first and postponed browsers, services, builds and tests until a later review.
-Commands below are the intended runbook for that later phase, not evidence they passed.
+**In development; a local preview is available at [127.0.0.1:4310](http://127.0.0.1:4310).**
+The authorized local review on 31 October 2026 passed native PostgreSQL 17 and MariaDB 11
+backup/restore through MCP, plus build/typecheck and targeted tests. The full eight-engine
+acceptance goal remains open. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
 
 ## Product
 
-- Database and S3 connections, encrypted credentials and explicit endpoint allowlists.
+- Database and S3 connections, encrypted credentials, revision-checked edits and explicit endpoint allowlists.
 - Backup plans, manual runs, timezone schedules, persistent jobs and event history.
 - Native database tools, immutable S3 artifacts and SHA-256 integrity.
 - Safe restore review into a precreated, separate, empty destination; no source overwrite.
 - Shared REST/OpenAPI and native MCP operations with scoped access.
+- Explicit S3 availability checks with cached check times; full downloaded-byte verification during restore.
 - Databasement-inspired operational dashboard, dense history, charts and original Steelkeep details.
 
 Required engine scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server.
 Profiles, prerequisites and packaging gaps are explicit in [engine profiles](docs/engine-profiles.md).
-PostgreSQL 17 and MariaDB 11.4 are the initial **target test fixtures**, not a verified support claim.
+PostgreSQL 17 and MariaDB 11.4 have passed isolated native MCP recovery against the local fixtures.
+MongoDB 8.0, Redis 7.4 and SQLite also passed isolated MCP recovery; MySQL 8,
+ClickHouse and SQL Server remain pending. This is not a general production support claim.
 MySQL/MariaDB have distinct compatibility constraints. No PITR, cluster-wide backup, or business
 recovery guarantee is implied by a successful logical dump or a zero CLI exit code.
 
-The intended Compose worker uses the multi-engine Ubuntu recipe in `Dockerfile.engines`:
-PG17, real MySQL8 and MariaDB11 clients, MongoDB tools100.20 and SQLite. This recipe has
-not been built. SQL Server needs the separately provisioned x64 DacFx extension.
+The Compose worker uses the multi-engine Ubuntu recipe in `Dockerfile.engines`:
+PG17, real MySQL8 and MariaDB11 clients, MongoDB tools100.20 and SQLite. Its ARM64 image
+built successfully and runs the local API/worker with current `server` and `shared` source
+bind mounts. Other-engine runtime acceptance and a clean immutable packaged run remain pending.
+SQL Server needs the separately provisioned x64 DacFx extension.
 The MariaDB compatibility executable is deliberately refused for MySQL sources.
 Current source limits are 2 GiB/archive, 500 tables and bounded validation metadata. MariaDB/MySQL
 backup takes a global read lock for the manifest and dump, so it blocks source-server writes
 for that interval and requires the explicit RELOAD privilege. It currently rejects stored
 programs, views, triggers/events, non-InnoDB tables and cross-database references rather than
-silently losing or rebinding them. These limits need real acceptance checks before support.
+silently losing or rebinding them. Boundary/limit checks and the remaining exact engine profiles still need acceptance.
 
-## Intended local setup — run only during the agreed review phase
+## Local setup and preview
 
 Prerequisites: Bun 1.4+, Node for Start tooling, Docker Compose. The fixture stack publishes
 only loopback ports. It contains synthetic data and deliberately public fixture credentials;
@@ -47,7 +53,7 @@ bun scripts/seed-fixture.ts
 bun run dev
 ```
 
-UI: `http://127.0.0.1:4310`. Installation token: `.steelkeep/token`; generated key:
+UI: [http://127.0.0.1:4310](http://127.0.0.1:4310). Installation token: `.steelkeep/token`; generated key:
 `.steelkeep/key`. Setup preserves existing files. API: port 4311, OpenAPI `/openapi`, JSON
 `/openapi/json`, MCP `/mcp`. The Start dev server forwards these to the same Elysia API.
 The Docker application profile uses internal fixture hostnames; a host-only API uses the
@@ -55,14 +61,15 @@ loopback configuration from `.env.example` instead. Do not run both APIs on the 
 
 For a packaged build, `Dockerfile` serves Start documents/assets and Elysia API/MCP from
 one Bun server. `compose.selfhost.yaml` uses the separate `Dockerfile.engines` worker image.
-Build/production
-entry, scoped-token configuration and recovery need later verification before real use.
+The current preview uses the development server and source-mounted API/worker. Clean packaged
+single-origin delivery and recovery from an immutable self-hosted image still require verification.
 
 ## Access and secrets
 
 Owner installation token has all scopes. Optional `STEELKEEP_SCOPED_TOKENS_FILE` points to
 a protected JSON array of `{token, actor, scopes}`; scopes: `read`, `configure`, `backup:run`,
-`restore:run`, `jobs:cancel`, `agents:manage`. Do not place that file inside built client assets or a repository.
+`restore:run`, `jobs:cancel`. Legacy file tokens cannot grant `agents:manage`; that permission
+belongs to the owner or scoped database-backed agent tokens. Keep the file outside client assets and the repository.
 Configuration → AI agents provides named identities and expiring, revocable tokens. Tokens
 are shown once and stored only as SHA-256 hashes. Default grant is read-only for 24 hours;
 delegation cannot increase scopes or outlive its issuer. Revocation includes descendants.
@@ -75,6 +82,18 @@ Remote HTTPS needs explicit `STEELKEEP_PUBLIC_HOSTS`, `STEELKEEP_ALLOWED_ORIGINS
 Secrets are authenticated-encrypted in metadata; key is outside the metadata database.
 Keep the key with a separate protected recovery copy. Losing it makes stored credentials
 unrecoverable. This does not claim that the dump artifacts themselves are encrypted.
+
+Connection edits keep endpoint/database identity and restore designation fixed so old
+artifacts retain their provenance. Omitted secret fields keep their stored values. Actual
+credential or operation-setting changes require an idle connection and reset its check.
+Unused connection records can be removed; any plan or recovery-history reference preserves
+the record. Removing a record never deletes database data or S3 objects.
+
+The Backups screen and MCP can explicitly recheck S3 object metadata. A matching HEAD
+size/metadata checksum is not downloaded-byte verification. Missing objects are marked
+missing; access denial and timeout stay unknown. Restore verifies the full SHA-256 before
+target writes. Browser backup request keys survive navigation/reload within the actor's
+session so an ambiguous start can recover its original job.
 
 ## Durable execution
 
@@ -91,16 +110,38 @@ Retention that deletes user backups is outside the current scope.
 
 ## Development and evidence
 
-Future checks: `bun run typecheck`, `bun run test`, `bun run build`, then isolated `bun run test:integration`,
-MCP and UI E2E acceptance. See [acceptance](docs/acceptance.md) and [architecture](docs/architecture.md).
-Nine foundation tests and a Start build passed before the no-run instruction; later changes
-are **unverified**, and that historical result does not establish current compatibility.
+The 31 October local execution record includes a successful frozen install, preserved setup
+key/token, healthy PostgreSQL/MariaDB/RustFS fixtures, migration 6, typecheck and build.
+`bun run test` most recently passed **18 tests / 68 assertions**; `bun run test:integration` passed
+**34 tests / 209 assertions**. HEAD classifications in the latter use mocked provider
+responses and are not data-recovery proof.
 
-Additional synthetic overlays and opt-in acceptance sources are written for MongoDB,
-Redis, SQLite and ClickHouse. See [acceptance ledger](docs/acceptance.md),
+`acceptance/mcp-recovery.test.ts` then passed both native engine scenarios with **27 assertions**:
+dump → S3 → downloaded-byte SHA-256 gate → fresh distinct precreated target → manifest
+validation, plus independent SQL counts/sums and PostgreSQL identity. Request retries returned
+the same job and a subsequent restore to the occupied target was refused. Runtime fixes
+included JSONB-key-order-independent comparison and a quoted MariaDB `rows` alias.
+
+Headless browser login and six main sections rendered; [overview screenshot](output/playwright/local-overview.png).
+The real UI recovery suite then passed **2/2 scenarios in 28.5 seconds**, one each for PostgreSQL
+and MariaDB: connection/plan forms, native jobs, metadata-only HEAD, independent S3 GET/SHA,
+review confirmation, displayed validation and direct SQL checks. The authenticated same-origin
+Scalar `/openapi` page also rendered its API heading and operation list without page errors.
+Desktop/mobile visual, keyboard and failure-injection acceptance remain separate gates. See [acceptance](docs/acceptance.md)
+and [architecture](docs/architecture.md). Earlier foundation-only results are historical.
+
+Synthetic fixture and opt-in acceptance sources are written for all eight engine profiles.
+See [acceptance ledger](docs/acceptance.md),
 [ClickHouse fixture](infra/clickhouse-fixture/README.md) and
-[native worker tooling](docs/native-tooling.md). They have not been started.
-Separate MySQL 8 and SQL Server fixture qualification remains outstanding.
+[native worker tooling](docs/native-tooling.md). Independent [MySQL 8](infra/mysql8-fixture-README.md)
+and optional [SQL Server](infra/mssql-fixture-README.md) fixtures have their own prerequisites.
+PostgreSQL 17, MariaDB 11, MongoDB 8.0.34, Redis 7.4.12 and SQLite have passed ordinary
+native MCP recovery. The extra-engine group passed 3 tests / 106 assertions; a subsequent
+SQLite Linux-writer rerun passed 35 assertions including the exact live-WAL marker/count.
+`bun run typecheck:acceptance` checks the harnesses and setup scripts separately.
+MySQL 8, ClickHouse and SQL Server still require their exact-profile recovery runs.
+SQL Server's restricted-source export remains an explicit compatibility question.
 
-No publication, deployment, real database connection or expense has been performed.
+Only isolated synthetic databases/storage were used. No production connection, publication,
+deployment or paid service was used.
 MIT licensed; adapted interface provenance and font notices: [third-party notices](THIRD-PARTY-NOTICES.md).

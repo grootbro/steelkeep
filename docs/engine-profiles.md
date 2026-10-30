@@ -2,9 +2,11 @@
 
 Current source scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis,
 ClickHouse and SQL Server, plus S3-compatible artifact storage. All eight profiles
-are **pending runtime acceptance**. A form option or implemented adapter is not a
-verified support claim. The owner has deferred services, containers, builds, tests
-and browser review until the implementation phase is ready for review.
+have explicit acceptance gates. Local review is now authorized: PostgreSQL 17 and
+MariaDB 11 passed MCP and UI recovery; MongoDB 8.0.34, Redis 7.4.12 and SQLite passed
+MCP recovery. MySQL 8, ClickHouse and SQL Server remain pending. A form option or
+ordinary recovery pass does not establish arbitrary-schema or production support.
+See the [acceptance ledger](acceptance.md) for remaining adverse-case and packaging gates.
 
 The shared machine-readable profile catalog is `shared/engines.ts`, returned by
 REST and MCP. Native commands run only in the worker; connection tests and restore
@@ -27,7 +29,8 @@ Compose selects `Dockerfile.engines`, a source recipe provisioning PostgreSQL,
 MySQL, MariaDB, MongoDB and SQLite tooling on Ubuntu; Redis and ClickHouse use their
 existing protocol adapters. `Dockerfile.worker` remains a smaller PG/MariaDB/SQLite
 development option. The optional SQL Server extension still needs explicit
-provisioning. None of these new packaging paths has been built or accepted; see
+provisioning. The ARM64 Ubuntu image built and runs the development API/worker;
+clean immutable self-hosted delivery and amd64 acceptance remain pending. See
 [native tooling](native-tooling.md) for package provenance and remaining checks.
 
 ## SQL Server optional helper

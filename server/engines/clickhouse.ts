@@ -35,7 +35,7 @@ const metadataLimit=2*1024*1024
 const quote=(value:string)=>'`'+identifier(value)+'`'
 const literal=(value:string)=>"'"+value.replaceAll('\\','\\\\').replaceAll("'","\\'")+"'"
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
-const fail=(code:string,message:string):never=>{throw new AppError(code,message)}
+const fail=(code:string,message:string,status?:number):never=>{throw new AppError(code,message,status)}
 const abortCheck=(signal:AbortSignal)=>{if(signal.aborted)fail('CANCELLED','Operation cancelled.')}
 const uint=(value:unknown)=>{const text=String(value);if(!/^\d+$/.test(text))fail('INVALID_ENGINE_RESPONSE','ClickHouse returned an invalid nonnegative counter.');return BigInt(text)}
 const uuid=(value:unknown)=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)

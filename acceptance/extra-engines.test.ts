@@ -8,6 +8,7 @@ import {MongoClient,BSON} from 'mongodb'
 import {createClient,RESP_TYPES} from 'redis'
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3'
 import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
+import {spawn} from 'node:child_process'
 
 // Source-only acceptance authoring. Not imported by the default `bun test tests`.
 // No native tool/image download, stack startup, source reset, FLUSH or DB drop.
@@ -26,7 +27,7 @@ async function harness(){
   const token=(await readFile(join(workspace,'.steelkeep','token'),'utf8')).trim()
   if(token.length<32)throw new Error('A valid local fixture installation token is required.')
   const client=new Client({name:'steelkeep-extra-acceptance',version:'0.1.0'})
-  await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+token}}}),{mode:'auto'})
+  await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+token}}}))
   function data(result:Awaited<ReturnType<Client['callTool']>>):unknown{
     const structured=result.structuredContent as {data?:unknown}|undefined
     if(structured&&'data' in structured)return structured.data
@@ -124,7 +125,7 @@ const mongoActions=['find','insert','createCollection','createIndex','listCollec
 async function mongoTarget(admin:MongoClient,nonempty=false){
   const suffix=randomBytes(6).toString('hex'),database='restore_extra_'+suffix,user='restore_'+suffix,password=randomBytes(24).toString('hex')
   await admin.db(database).createCollection('__steelkeep_empty_target')
-  if(nonempty)await admin.db(database).collection('safety_keep').insertOne({_id:'must-survive',value:'keep-me'})
+  if(nonempty)await admin.db(database).collection<{_id:string;value:string}>('safety_keep').insertOne({_id:'must-survive',value:'keep-me'})
   await admin.db('admin').command({createRole:user,privileges:[{resource:{db:database,collection:''},actions:mongoActions}],roles:[]})
   await admin.db('admin').command({createUser:user,pwd:password,mechanisms:['SCRAM-SHA-256'],roles:[{role:user,db:'admin'}]})
   return {name:'MongoDB acceptance '+suffix,kind:'mongodb',host:'mongodb-fixture',port:27017,database,user,password,authDatabase:'admin',tls:false,restoreTarget:true}
@@ -148,20 +149,24 @@ recovery('MongoDB MCP: native BSON archive -> S3 -> restricted empty sentinel ta
     expect(BSON.EJSON.serialize(after,{relaxed:false})).toEqual(BSON.EJSON.serialize(before,{relaxed:false}))
     expect(await recovered.collection('__steelkeep_empty_target').countDocuments()).toBe(0)
     const sourceOptions=await sourceDb.listCollections({name:'entries'}).next(),targetOptions=await recovered.listCollections({name:'entries'}).next()
-    expect(BSON.EJSON.serialize(targetOptions?.options,{relaxed:false})).toEqual(BSON.EJSON.serialize(sourceOptions?.options,{relaxed:false}))
+    if(!sourceOptions||!targetOptions||!('options' in sourceOptions)||!('options' in targetOptions))throw new Error('Full collection metadata was not returned for independent options comparison.')
+    expect(BSON.EJSON.serialize(targetOptions.options,{relaxed:false})).toEqual(BSON.EJSON.serialize(sourceOptions.options,{relaxed:false}))
     const indexes=await recovered.collection('entries').listIndexes().toArray()
-    expect(indexes.find(index=>index.name==='project_created')?.key).toEqual({projectId:1,createdAt:-1})
+    const compound=indexes.find(index=>index.name==='project_created')?.key
+    if(!compound)throw new Error('The restored compound MongoDB index is missing.')
+    expect(Object.entries(compound).map(([name,value])=>[name,Number(value)])).toEqual([['projectId',1],['createdAt',-1]])
     expect((await recovered.collection('projects').listIndexes().toArray()).find(index=>index.name==='fixture_unique')?.unique).toBe(true)
     expect(BSON.EJSON.serialize(await sourceDb.collection('entries').find({}).sort({_id:1}).toArray(),{relaxed:false})).toEqual(BSON.EJSON.serialize(before,{relaxed:false}))
     const state=await admin.db('admin').command({currentOp:1,$all:true})
-    expect(state.fsyncLock).toBe(false)
+    expect(Number(state.ok)).toBe(1)
+    expect(state.fsyncLock??false).toBe(false)
     const sourceBlocks=await h.tool<Array<{resource_key:string}>>('list_source_blocks')
     expect(sourceBlocks.some(block=>block.resource_key==='mongodb:mongodb-fixture:27017')).toBe(false)
     const blocked=await h.rejected('prepare_restore',{artifactId:artifact.id,targetId:connection.id})
     expect(blocked.error.code).toBe('TARGET_BLOCKED')
     const occupied=await mongoTarget(admin,true),occupiedConnection=await h.rest<{id:string}>('/connections',occupied)
     expect((await h.rejected('prepare_restore',{artifactId:artifact.id,targetId:occupiedConnection.id})).error.code).toBe('TARGET_NOT_EMPTY')
-    expect((await admin.db(occupied.database).collection('safety_keep').findOne({_id:'must-survive'}))?.value).toBe('keep-me')
+    expect((await admin.db(occupied.database).collection<{_id:string;value:string}>('safety_keep').findOne({_id:'must-survive'}))?.value).toBe('keep-me')
     const alias=await h.rest<{id:string}>('/connections',{name:'MongoDB forbidden source alias '+randomUUID(),kind:'mongodb',host:'mongodb-fixture',port:27017,database:'source_mongo',user:'backup_reader',password:'local-mongo-reader-only',authDatabase:'admin',tls:false,restoreTarget:true})
     expect((await h.rejected('prepare_restore',{artifactId:artifact.id,targetId:alias.id})).error.code).toBe('SOURCE_TARGET_CONFLICT')
     expect(source.id!==connection.id).toBe(true)
@@ -170,8 +175,9 @@ recovery('MongoDB MCP: native BSON archive -> S3 -> restricted empty sentinel ta
 },300000)
 
 function redisAdmin(database:number){
-  const client=createClient({socket:{host:'127.0.0.1',port:54377,connectTimeout:5000,reconnectStrategy:false},username:'fixture_admin',password:'local-redis-admin-only',database,disableOfflineQueue:true}).withTypeMapping({[RESP_TYPES.BLOB_STRING]:Buffer})
-  client.on('error',()=>{});return client
+  const client=createClient({socket:{host:'127.0.0.1',port:54377,connectTimeout:5000,reconnectStrategy:false},username:'fixture_admin',password:'local-redis-admin-only',database,disableOfflineQueue:true})
+  client.on('error',()=>{})
+  return {connect:()=>client.connect(),close:()=>client.close(),sendCommand:async(args:Array<string|Buffer>):Promise<unknown>=>client.sendCommand(args,{typeMapping:{[RESP_TYPES.BLOB_STRING]:Buffer}})}
 }
 const replyText=(value:unknown)=>Buffer.isBuffer(value)?value.toString('utf8'):String(value)
 const replyStrings=(value:unknown)=>{if(!Array.isArray(value))throw new Error('Expected a Redis array reply.');return value.map(replyText)}
@@ -240,16 +246,48 @@ async function sqliteTarget(filename:string,sql='PRAGMA user_version=1;'){
   return {path,mounted:mounted+'/target/'+filename}
 }
 
+async function sqliteWalWriter(marker:string,payload:Buffer){
+  if(process.env.DOCKER_HOST&&!process.env.DOCKER_HOST.startsWith('unix://'))throw new Error('The SQLite fixture writer requires a local Unix Docker endpoint.')
+  const context=Bun.spawn(['docker','context','inspect','--format','{{.Endpoints.docker.Host}}'],{cwd:workspace,stdout:'pipe',stderr:'ignore'})
+  const endpoint=(await new Response(context.stdout).text()).trim()
+  if(await context.exited!==0||!endpoint.startsWith('unix://'))throw new Error('The SQLite fixture writer requires a local Unix Docker context.')
+  const child=spawn('docker',['compose','-f','compose.yaml','-f','compose.extra-engines.yaml','run','--rm','--no-deps','-T','sqlite-writer'],{cwd:workspace,stdio:['pipe','pipe','pipe'],env:process.env})
+  child.stdin.on('error',()=>{})
+  child.stderr.resume()
+  const exited=new Promise<number|null>((resolve,reject)=>{child.once('error',()=>reject(new Error('The Linux SQLite fixture writer could not start.')));child.once('close',resolve)})
+  void exited.catch(()=>{})
+  async function close(){
+    child.stdin.end()
+    const timer=setTimeout(()=>child.kill('SIGTERM'),10000)
+    try{if(await exited!==0)throw new Error('The Linux SQLite fixture writer did not close cleanly.')}
+    finally{clearTimeout(timer)}
+  }
+  try{
+    const ready=await new Promise<{ready:boolean;marker:string;markerCount:number;count:number;walBytes:number}>((resolve,reject)=>{
+      let text=''
+      const timer=setTimeout(()=>reject(new Error('The Linux SQLite fixture writer readiness deadline expired.')),30000)
+      child.stdout.on('data',(chunk:Buffer)=>{
+        text+=chunk.toString('utf8')
+        if(text.length>4096){clearTimeout(timer);reject(new Error('The Linux SQLite fixture writer returned unexpected output.'));return}
+        if(text.includes('\n')){clearTimeout(timer);try{resolve(JSON.parse(text.slice(0,text.indexOf('\n'))))}catch{reject(new Error('The Linux SQLite fixture writer returned invalid readiness.'))}}
+      })
+      void exited.then(()=>{clearTimeout(timer);reject(new Error('The Linux SQLite fixture writer exited before readiness.'))},reject)
+      child.stdin.write(JSON.stringify({marker,payloadbase64:payload.toString('base64')})+'\n')
+    })
+    if(!ready.ready||ready.marker!==marker||ready.markerCount!==1||ready.count<1||ready.walBytes<=32)throw new Error('The Linux SQLite fixture writer did not confirm the committed WAL marker.')
+    return {close,count:ready.count}
+  }catch(error){await close().catch(()=>{});throw error}
+}
+
 recovery('SQLite MCP: live WAL -> native snapshot -> distinct empty file -> rowids, identity, binary data and constraints',async()=>{
   const h=await harness(),sourcePath=join(local,'source','source.sqlite')
   let source:Database|undefined,target:Database|undefined
+  let writer:Awaited<ReturnType<typeof sqliteWalWriter>>|undefined
   try{
-    source=new Database(sourcePath,{readonly:false,strict:true,create:false})
     const {plan}=await h.setup('sqlite'),marker=randomUUID(),markerBytes=Buffer.from([0,255,1,127])
-    source.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; PRAGMA foreign_keys=ON;')
-    source.query('INSERT INTO wal_markers(id,payload) VALUES(?,?)').run(marker,markerBytes)
-    // Keep this writer handle open: the newly committed marker remains in WAL,
-    // and the read-only source mount must see existing readable WAL and SHM.
+    // Writer and worker share Linux locking semantics; macOS is only the harness.
+    writer=await sqliteWalWriter(marker,markerBytes)
+    source=new Database(sourcePath,{readonly:true,strict:true,create:false})
     expect((await stat(sourcePath+'-wal')).size>0).toBe(true)
     await access(sourcePath+'-shm')
     const rows=source.query('SELECT id,project_id,body,CAST(amount AS TEXT) AS amount,hex(binary_value) AS bytes,optional_text FROM entries ORDER BY id').all()
@@ -262,6 +300,7 @@ recovery('SQLite MCP: live WAL -> native snapshot -> distinct empty file -> rowi
     expect(target.query('SELECT id,project_id,body,CAST(amount AS TEXT) AS amount,hex(binary_value) AS bytes,optional_text FROM entries ORDER BY id').all()).toEqual(rows)
     expect(target.query('SELECT rowid,body FROM notes ORDER BY rowid').all()).toEqual(notes)
     expect((target.query('SELECT hex(payload) AS bytes FROM wal_markers WHERE id=?').get(marker) as {bytes:string}).bytes).toBe(markerBytes.toString('hex').toUpperCase())
+    expect((target.query('SELECT count(*) AS n FROM wal_markers').get() as {n:number}).n).toBe(writer.count)
     expect(Object.values(target.query('PRAGMA integrity_check').get() as Record<string,unknown>)[0]).toBe('ok')
     expect(target.query('PRAGMA foreign_key_check').all()).toEqual([])
     expect((target.query('PRAGMA user_version').get() as {user_version:number}).user_version).toBe(7)
@@ -290,5 +329,5 @@ recovery('SQLite MCP: live WAL -> native snapshot -> distinct empty file -> rowi
       if(linked)await unlink(alias)
     }
     expect((await stat(sourcePath)).nlink).toBe(1)
-  }finally{target?.close();source?.close();await h.client.close()}
+  }finally{target?.close();source?.close();await writer?.close();await h.client.close()}
 },300000)

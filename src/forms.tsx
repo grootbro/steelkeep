@@ -4,45 +4,75 @@ import {api,ApiError,type Artifact,type Connection,type Job,type Plan,type Resto
 import {Badge,bytes,date,Submit} from './ui'
 import {engineProfiles} from '../shared/engines'
 
-export function ConnectionForm({onDone}:{onDone:()=>void}){
-  const [kind,setKind]=useState<Connection['kind']>('postgres'),[target,setTarget]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('')
+export function ConnectionForm({connection,onDone,onReload}:{connection?:Connection;onDone:()=>void;onReload?:()=>Promise<void>}){
+  const editing=!!connection,c=connection?.config??{}
+  const [kind,setKind]=useState<Connection['kind']>(connection?.kind??'postgres')
+  const [target,setTarget]=useState(c.restoreTarget===true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState(false)
   const profile=engineProfiles.find(profile=>profile.kind===kind)
   const defaults:Record<string,number>={postgres:5432,mysql:3306,mariadb:3306,mongodb:27017,redis:6379,clickhouse:8443,mssql:1433}
+  const locking=['mysql','mariadb','mongodb','redis'].includes(kind)
   async function submit(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();setBusy(true);setError('')
-    const form=new FormData(event.currentTarget),body:Record<string,unknown>={...Object.fromEntries(form),kind}
-    if(kind!=='s3'){
-      body.restoreTarget=target
-      if(kind!=='sqlite'){body.port=Number(form.get('port'));body.tls=form.has('tls')}
-      if(['mysql','mariadb','mongodb','redis'].includes(kind))body.allowGlobalReadLock=form.has('allowGlobalReadLock')
-      if(kind==='redis')body.dbIndex=Number(form.get('dbIndex'))
-      if(kind==='clickhouse')body.quiescentSource=form.has('quiescentSource')
+    event.preventDefault();if(busy)return
+    setBusy(true);setError('');setStale(false)
+    const form=new FormData(event.currentTarget)
+    let body:Record<string,unknown>
+    if(connection){
+      body={name:String(form.get('name')),revision:connection.revision}
+      if(kind!=='s3'&&kind!=='sqlite'){
+        body.user=String(form.get('user'));body.tls=form.has('tls')
+        const password=String(form.get('password')??'');if(password)body.password=password
+      }
+      if(kind==='s3')for(const field of ['accessKey','secretKey']){const value=String(form.get(field)??'');if(value)body[field]=value}
+      if(locking&&!target)body.allowGlobalReadLock=form.has('allowGlobalReadLock')
+      if(kind==='clickhouse'&&!target)body.quiescentSource=form.has('quiescentSource')
+    }else{
+      body={...Object.fromEntries(form),kind}
+      if(kind!=='s3'){
+        body.restoreTarget=target
+        if(kind!=='sqlite'){body.port=Number(form.get('port'));body.tls=form.has('tls')}
+        if(locking)body.allowGlobalReadLock=form.has('allowGlobalReadLock')
+        if(kind==='redis')body.dbIndex=Number(form.get('dbIndex'))
+        if(kind==='clickhouse')body.quiescentSource=form.has('quiescentSource')
+      }
     }
-    try{await api('/connections',body);onDone()}catch(err){setError((err as Error).message)}finally{setBusy(false)}
+    try{await api(connection?`/connections/${connection.id}`:'/connections',body,connection?'PATCH':'POST');onDone()}
+    catch(err){setError(err instanceof Error?err.message:'Could not save the connection.');setStale(err instanceof ApiError&&err.code==='REVISION_CONFLICT')}finally{setBusy(false)}
   }
   return <form onSubmit={submit}>
-    <div className="form-section"><label>Connection type<select value={kind} onChange={e=>{setKind(e.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="s3">S3-compatible storage</option></select></label><label>Name<input name="name" required maxLength={80} placeholder={kind==='s3'?'Backup storage':'Application database'}/></label></div>
-    {kind==='s3'?<div className="form-section"><h3>Storage details</h3><label>Endpoint<input name="endpoint" maxLength={2048} type="url" required placeholder="https://s3.example.com"/></label><div className="field-pair"><label>Bucket<input name="bucket" maxLength={63} required/></label><label>Region<input name="region" maxLength={80} defaultValue="us-east-1" required/></label></div><label>Object prefix<input name="prefix" maxLength={200} defaultValue="steelkeep"/></label><label>Access key<input name="accessKey" maxLength={1024} required autoComplete="off"/></label><label>Secret key<input name="secretKey" maxLength={1024} type="password" required autoComplete="new-password"/></label></div>:<Fragment key={kind}>
+    <div className="form-section">
+      <label>Connection type<select value={kind} disabled={editing} onChange={event=>{setKind(event.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="s3">S3-compatible storage</option></select></label>
+      <label>Name<input name="name" required maxLength={80} defaultValue={connection?.name} placeholder={kind==='s3'?'Backup storage':'Application database'}/></label>
+      {editing&&<p className="form-hint">Address, database and destination role identify this connection’s history. Credentials and display name can be updated here.</p>}
+    </div>
+    {kind==='s3'?<div className="form-section">
+      <h3>Storage details</h3>
+      <label>Endpoint<input name="endpoint" maxLength={2048} type="url" required disabled={editing} defaultValue={String(c.endpoint??'')} placeholder="https://s3.example.com"/></label>
+      <div className="field-pair"><label>Bucket<input name="bucket" maxLength={63} required disabled={editing} defaultValue={String(c.bucket??'')}/></label><label>Region<input name="region" maxLength={80} defaultValue={String(c.region??'us-east-1')} disabled={editing} required/></label></div>
+      <label>Object prefix<input name="prefix" maxLength={200} defaultValue={String(c.prefix??'steelkeep')} disabled={editing}/></label>
+      <label>{editing?'New access key':'Access key'}<input name="accessKey" maxLength={1024} required={!editing} autoComplete="off" placeholder={editing?'Leave blank to keep the saved key':undefined}/></label>
+      <label>{editing?'New secret key':'Secret key'}<input name="secretKey" maxLength={1024} type="password" required={!editing} autoComplete="new-password" placeholder={editing?'Leave blank to keep the saved secret':undefined}/></label>
+    </div>:<Fragment key={kind}>
       <div className="form-section"><h3>Connection details</h3>
-        {kind==='sqlite'?<label>Database file<input name="path" required maxLength={4096} placeholder="/data/sources/application.sqlite"/><span className="form-hint">An existing SQLite file inside the installation’s allowed source or target directory.</span></label>:<>
-          <div className="field-pair"><label>Host<input name="host" maxLength={253} required placeholder="database.internal"/></label><label>Port<input key={kind} name="port" type="number" defaultValue={defaults[kind]} min={1} max={65535} required/></label></div>
-          {kind==='redis'?<label>Logical database<input name="dbIndex" type="number" min={0} max={15} defaultValue={0} required/></label>:<label>Database<input name="database" maxLength={63} required placeholder="app"/></label>}
-          <div className="field-pair"><label>Username<input key={kind} name="user" maxLength={80} defaultValue={kind==='redis'?'default':''} required autoComplete="off"/></label><label>Password<input name="password" maxLength={1024} type="password" required autoComplete="new-password"/></label></div>
-          {kind==='mongodb'&&<label>Authentication database<input name="authDatabase" defaultValue="admin" maxLength={63} required/></label>}
-          <label className="checkbox"><input type="checkbox" name="tls" defaultChecked/>Verify TLS certificate</label>
+        {kind==='sqlite'?<label>Database file<input name="path" required maxLength={4096} disabled={editing} defaultValue={String(c.path??'')} placeholder="/data/sources/application.sqlite"/><span className="form-hint">An existing SQLite file inside the installation’s allowed source or target directory.</span></label>:<>
+          <div className="field-pair"><label>Host<input name="host" maxLength={253} required disabled={editing} defaultValue={String(c.host??'')} placeholder="database.internal"/></label><label>Port<input name="port" type="number" defaultValue={Number(c.port??defaults[kind])} disabled={editing} min={1} max={65535} required/></label></div>
+          {kind==='redis'?<label>Logical database<input name="dbIndex" type="number" min={0} max={15} defaultValue={Number(c.dbIndex??0)} disabled={editing} required/></label>:<label>Database<input name="database" maxLength={63} required disabled={editing} defaultValue={String(c.database??'')} placeholder="app"/></label>}
+          <div className="field-pair"><label>Username<input name="user" maxLength={80} defaultValue={String(c.user??(kind==='redis'?'default':''))} required autoComplete="off"/></label><label>{editing?'New password':'Password'}<input name="password" maxLength={1024} type="password" required={!editing} autoComplete="new-password" placeholder={editing?'Leave blank to keep the saved password':undefined}/></label></div>
+          {kind==='mongodb'&&<label>Authentication database<input name="authDatabase" defaultValue={String(c.authDatabase??'admin')} disabled={editing} maxLength={63} required/></label>}
+          <label className="checkbox"><input type="checkbox" name="tls" defaultChecked={editing?c.tls===true:true}/>Verify TLS certificate</label>
         </>}
-        <label className="checkbox"><input type="checkbox" checked={target} onChange={e=>setTarget(e.target.checked)}/>Use only as a restore destination</label>
-        <p className="form-hint">{kind==='sqlite'?'Prepare a separate initialized empty SQLite file for recovery.':kind==='mongodb'?'An owner must create an empty __steelkeep_empty_target collection with its ordinary _id index in a separate database. Use a dedicated target-only restore role.':'Prepare a separate empty destination with dedicated restore credentials.'}</p>
+        <label className="checkbox"><input type="checkbox" checked={target} disabled={editing} onChange={event=>setTarget(event.target.checked)}/>Use only as a restore destination</label>
+        {target&&<p className="form-hint">{kind==='sqlite'?'Prepare a separate initialized empty SQLite file for recovery.':kind==='mongodb'?'An owner must create an empty __steelkeep_empty_target collection with its ordinary _id index in a separate database. Use a dedicated target-only restore role.':'Prepare a separate empty destination with dedicated restore credentials.'}</p>}
       </div>
       {profile&&<div className="form-section"><h3>{profile.profile}</h3>
-        {kind==='clickhouse'&&<><label>Backup disk<input name="backupDisk" maxLength={80} required placeholder="backups"/></label><label>Shared backup directory<input name="sharedBackupRoot" maxLength={4096} required placeholder="/var/lib/clickhouse/backups"/><span className="form-hint">The configured backup disk must be mounted at this same path for ClickHouse and the worker.</span></label>{!target&&<label className="checkbox"><input name="quiescentSource" type="checkbox" required/>The source will remain idle for the entire backup window.</label>}</>}
-        {!target&&['mysql','mariadb','mongodb'].includes(kind)&&<label className="checkbox"><input name="allowGlobalReadLock" type="checkbox" required/>Allow this backup to temporarily block writes across the source server.</label>}
-        {!target&&kind==='redis'&&<label className="checkbox"><input name="allowGlobalReadLock" type="checkbox" required/>Allow an atomic capture that briefly blocks other Redis commands.</label>}
+        {kind==='clickhouse'&&<><label>Backup disk<input name="backupDisk" maxLength={80} required disabled={editing} defaultValue={String(c.backupDisk??'')} placeholder="backups"/></label><label>Shared backup directory<input name="sharedBackupRoot" maxLength={4096} required disabled={editing} defaultValue={String(c.sharedBackupRoot??'')} placeholder="/var/lib/clickhouse/backups"/><span className="form-hint">The configured backup disk must be mounted at this same path for ClickHouse and the worker.</span></label>{!target&&<label className="checkbox"><input name="quiescentSource" type="checkbox" required={!editing} defaultChecked={c.quiescentSource===true}/>The source will remain idle for the entire backup window.</label>}</>}
+        {!target&&locking&&<label className="checkbox"><input name="allowGlobalReadLock" type="checkbox" required={!editing} defaultChecked={c.allowGlobalReadLock===true}/>{kind==='redis'?'Allow an atomic capture that briefly blocks other Redis commands.':'Allow this backup to temporarily block writes across the source server.'}</label>}
         <p className="form-hint">{profile.prerequisites}</p>
       </div>}
     </Fragment>}
+    {editing&&kind!=='sqlite'&&<p className="form-hint">Saved secrets are never shown. Credential changes require the connection to be idle and reset its connection check.</p>}
     {error&&<p className="form-error" role="alert">{error}</p>}
-    <div className="form-bottom"><span><LockKeyhole size={12}/>{kind==='sqlite'?'Restricted local file access':'Encrypted credentials'}</span><Submit busy={busy}>Save connection</Submit></div>
+    {stale&&onReload&&<div className="form-section"><p className="form-hint">Load the latest settings to continue. Unsaved fields will be cleared.</p><button type="button" className="secondary" disabled={busy} onClick={async()=>{setBusy(true);try{await onReload()}catch(error){setError(error instanceof Error?error.message:'Could not reload settings.')}finally{setBusy(false)}}}>Load latest settings</button></div>}
+    <div className="form-bottom"><span><LockKeyhole size={12}/>{kind==='sqlite'?'Restricted local file access':'Encrypted credentials'}</span><Submit busy={busy}>{editing?'Save changes':'Save connection'}</Submit></div>
   </form>
 }
 export function PlanForm({connections,plan,onDone}:{connections:Connection[];plan?:Plan;onDone:()=>void}){
