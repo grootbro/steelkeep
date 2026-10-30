@@ -1,0 +1,36 @@
+# Opt-in overlay; authoring this file is not acceptance evidence.
+services:
+  api:
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_CLICKHOUSE_BACKUP_ROOTS: /steelkeep-clickhouse-backups
+    volumes:
+      - ./.steelkeep/extra-fixtures/clickhouse/backups:/steelkeep-clickhouse-backups
+  worker:
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_CLICKHOUSE_BACKUP_ROOTS: /steelkeep-clickhouse-backups
+    volumes:
+      - ./.steelkeep/extra-fixtures/clickhouse/backups:/steelkeep-clickhouse-backups
+  clickhouse-fixture:
+    image: clickhouse/clickhouse-server:25.8.12.129
+    environment:
+      # Official entrypoint supports these variables and drops privileges itself.
+      # Same UID/GID as the worker preserves its private operation journals.
+      CLICKHOUSE_UID: ${STEELKEEP_UID:-1000}
+      CLICKHOUSE_GID: ${STEELKEEP_GID:-1000}
+      CLICKHOUSE_SKIP_USER_SETUP: '1'
+    ports: ["127.0.0.1:54378:8123"]
+    volumes:
+      - clickhouse-fixture:/var/lib/clickhouse
+      - ./.steelkeep/extra-fixtures/clickhouse/backups:/steelkeep-clickhouse-backups
+      - ./infra/clickhouse-fixture/config.xml:/etc/clickhouse-server/config.d/steelkeep-fixture.xml:ro
+      - ./infra/clickhouse-fixture/users.xml:/etc/clickhouse-server/users.d/steelkeep-fixture.xml:ro
+      - ./infra/clickhouse-fixture/init.sql:/docker-entrypoint-initdb.d/fixture.sql:ro
+    healthcheck:
+      test: [CMD, wget, --spider, -q, http://127.0.0.1:8123/ping]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+volumes:
+  clickhouse-fixture:

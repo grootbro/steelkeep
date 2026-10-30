@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.steelkeep/
+.output/
+.tanstack/
+dist/
+test-results/
+playwright-report/
+.playwright-cli/
+output/
+tools/**/bin/
+tools/**/obj/

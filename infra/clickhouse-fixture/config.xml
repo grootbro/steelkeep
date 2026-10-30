@@ -1,0 +1,10 @@
+<clickhouse>
+  <!-- Remove sample remote cluster declarations: this is one isolated server. -->
+  <remote_servers replace="replace" />
+  <storage_configuration>
+    <disks>
+      <steelkeep_backup><type>local</type><path>/steelkeep-clickhouse-backups/</path></steelkeep_backup>
+    </disks>
+  </storage_configuration>
+  <backups><allowed_disk>steelkeep_backup</allowed_disk></backups>
+</clickhouse>

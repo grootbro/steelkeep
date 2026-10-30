@@ -1,0 +1,25 @@
+# Optional, explicit Linux x64 extension. Building this recipe downloads Microsoft
+# packages under their own terms; it is not selected by default Compose.
+# Source-only recipe: no build or package restore has been performed.
+ARG ENGINE_IMAGE=steelkeep-engines:local
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS helper
+ARG TARGETARCH
+RUN test "$TARGETARCH" = amd64
+WORKDIR /source
+COPY tools/Steelkeep.DacFx ./
+RUN dotnet publish Steelkeep.DacFx.csproj --configuration Release --runtime linux-x64 --self-contained false --output /published
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
+
+FROM ${ENGINE_IMAGE} AS worker
+ARG TARGETARCH
+USER root
+RUN test "$TARGETARCH" = amd64 && apt-get update && apt-get install -y --no-install-recommends libicu74 libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
+COPY --from=helper /published /opt/steelkeep-dacfx
+ENV DOTNET_ROOT=/usr/share/dotnet \
+    PATH=/usr/share/dotnet:/opt/mysql8/usr/bin:/usr/lib/postgresql/17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    STEELKEEP_DACFX_HELPER=/opt/steelkeep-dacfx/Steelkeep.DacFx.dll
+USER 10001:10001
+CMD ["bun", "server/worker.ts"]

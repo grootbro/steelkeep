@@ -1,0 +1,7 @@
+<clickhouse>
+  <!-- Local bootstrap only; no default-user access through the published port. -->
+  <users><default>
+    <networks replace="replace"><ip>127.0.0.1</ip><ip>::1</ip></networks>
+    <access_management>1</access_management>
+  </default></users>
+</clickhouse>

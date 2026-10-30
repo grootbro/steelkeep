@@ -1,0 +1,65 @@
+# Synthetic fixtures only. This file has not been launched or accepted.
+# Future, explicit sequence (not part of default test/infra scripts):
+#   STEELKEEP_ACCEPTANCE=synthetic-local-extra bun scripts/seed-extra-fixtures.ts --prepare-files
+#   docker compose -f compose.yaml -f compose.extra-engines.yaml --profile extra-engines --profile application up -d
+#   STEELKEEP_ACCEPTANCE=synthetic-local-extra bun scripts/seed-extra-fixtures.ts
+#   STEELKEEP_ACCEPTANCE=synthetic-local-extra bun test acceptance/extra-engines.test.ts
+# Base fixture seeding must also have created the existing Local S3 / RustFS connection.
+# Native MongoDB Database Tools 100.20.x must be explicitly provisioned in the
+# worker profile before Mongo backup can pass. This overlay does not download tools.
+services:
+  api:
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_SQLITE_SOURCE_ROOTS: /var/lib/steelkeep-fixtures/sqlite/source
+      STEELKEEP_SQLITE_TARGET_ROOTS: /var/lib/steelkeep-fixtures/sqlite/target
+    volumes:
+      - ./.steelkeep/extra-fixtures/sqlite/source:/var/lib/steelkeep-fixtures/sqlite/source:ro
+      - ./.steelkeep/extra-fixtures/sqlite/target:/var/lib/steelkeep-fixtures/sqlite/target:rw
+  worker:
+    environment:
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_SQLITE_SOURCE_ROOTS: /var/lib/steelkeep-fixtures/sqlite/source
+      STEELKEEP_SQLITE_TARGET_ROOTS: /var/lib/steelkeep-fixtures/sqlite/target
+    volumes:
+      - ./.steelkeep/extra-fixtures/sqlite/source:/var/lib/steelkeep-fixtures/sqlite/source:ro
+      - ./.steelkeep/extra-fixtures/sqlite/target:/var/lib/steelkeep-fixtures/sqlite/target:rw
+  mongodb-fixture:
+    profiles: [extra-engines]
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: fixture_admin
+      MONGO_INITDB_ROOT_PASSWORD: local-mongo-admin-only
+    ports: ["127.0.0.1:54376:27017"]
+    volumes:
+      - extra-mongodb-data:/data/db
+      - ./infra/mongodb-fixture.js:/docker-entrypoint-initdb.d/fixture.js:ro
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "const a=db.getSiblingDB('admin'); if(!a.auth(process.env.MONGO_INITDB_ROOT_USERNAME,process.env.MONGO_INITDB_ROOT_PASSWORD))quit(2); if(!a.getUser('backup_reader'))quit(2); if(!db.getSiblingDB('restore_mongo').getCollectionNames().includes('__steelkeep_empty_target'))quit(2); if(a.runCommand({ping:1}).ok!==1)quit(2)"
+      interval: 2s
+      timeout: 5s
+      retries: 40
+  redis-fixture:
+    profiles: [extra-engines]
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, "yes", --aclfile, /usr/local/etc/redis/fixture.acl, --databases, "16", --protected-mode, "yes", --bind, 0.0.0.0]
+    environment:
+      # Public disposable fixture credential; healthcheck keeps it out of argv.
+      REDISCLI_AUTH: local-redis-admin-only
+    ports: ["127.0.0.1:54377:6379"]
+    volumes:
+      - extra-redis-data:/data
+      - ./infra/redis-fixture.acl:/usr/local/etc/redis/fixture.acl:ro
+    healthcheck:
+      test: [CMD, redis-cli, --user, fixture_admin, --no-auth-warning, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  extra-mongodb-data:
+  extra-redis-data:

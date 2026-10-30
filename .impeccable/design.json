@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mode": "operate",
+  "direction": "Databasement operational dashboard with cool slate surfaces and violet actions",
+  "authority": "User-pinned Databasement reference; previous green visual world replaced",
+  "references": [{"name":"Databasement","commit":"e7535032de8570f97b982c857b809caa7f1f4a24","license":"MIT"},{"name":"Salt.md","use":"interaction principles only; no source copied","license":"AGPL"}],
+  "tokens": {
+    "color": {"ground":"#191e27","sidebar":"#171c25","surface":"#222936","raised":"#2b3342","line":"#343e50","text":"#e9edf4","muted":"#a7b1c1","accent":"#9a8aff","primary":"#7665e9","success":"#2dd4a3","failure":"#fb7a92","warning":"#f2c467","blue":"#72b5ff"},
+    "font": {"sans":"Instrument Sans Variable","mono":"ui-monospace, SFMono-Regular, Consolas, monospace"},
+    "radius": {"panel":"12px","control":"7px","dialog":"14px"},
+    "layout": {"sidebar":"250px","pageGutter":"32px","panelGap":"24px","mobileBreakpoint":"680px"}
+  },
+  "runStatuses": ["queued","running","cancelling","succeeded","failed","cancelled","interrupted"],
+  "validation": {"scope":"static source only","rendered":false,"reason":"User forbids browsers/services/check execution until requested"}
+}

@@ -1,0 +1,88 @@
+name: steelkeep
+services:
+  api:
+    profiles: [application]
+    build:
+      context: .
+      dockerfile: Dockerfile.engines
+    image: steelkeep-worker:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    command: [bun, server/index.ts]
+    environment: &app_environment
+      DATABASE_URL: postgres://steelkeep:local-metadata-only@metadata:5432/steelkeep
+      STEELKEEP_KEY_FILE: /run/steelkeep/key
+      STEELKEEP_TOKEN_FILE: /run/steelkeep/token
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3
+      STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4310,http://localhost:4310
+      HOST: 0.0.0.0
+      PORT: 4311
+    ports: ["127.0.0.1:4311:4311"]
+    volumes: [./.steelkeep:/run/steelkeep:ro]
+    depends_on:
+      metadata: {condition: service_healthy}
+  worker:
+    profiles: [application]
+    image: steelkeep-worker:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    environment: *app_environment
+    volumes: [./.steelkeep:/run/steelkeep:ro]
+    depends_on:
+      metadata: {condition: service_healthy}
+      fixture: {condition: service_healthy}
+      s3: {condition: service_started}
+      mysql-fixture: {condition: service_healthy}
+  mysql-fixture:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: local-mariadb-fixture-only
+    ports: ["127.0.0.1:54375:3306"]
+    volumes:
+      - mysql-fixture:/var/lib/mysql
+      - ./infra/mysql-fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  metadata:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: steelkeep
+      POSTGRES_PASSWORD: local-metadata-only
+      POSTGRES_DB: steelkeep
+    ports: ["127.0.0.1:54371:5432"]
+    volumes: [metadata:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U steelkeep"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  fixture:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fixture_admin
+      POSTGRES_PASSWORD: local-fixture-only
+      POSTGRES_DB: source
+    ports: ["127.0.0.1:54372:5432"]
+    volumes:
+      - fixture:/var/lib/postgresql/data
+      - ./infra/fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fixture_admin -d source"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  s3:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    environment:
+      RUSTFS_ACCESS_KEY: steelkeep-local
+      RUSTFS_SECRET_KEY: local-s3-fixture-only
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: 'true'
+    ports: ["127.0.0.1:54373:9000", "127.0.0.1:54374:9001"]
+    volumes: [s3:/data]
+volumes:
+  metadata:
+  fixture:
+  s3:
+  mysql-fixture:

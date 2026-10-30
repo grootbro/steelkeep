@@ -1,0 +1,56 @@
+name: steelkeep-selfhost
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: steelkeep
+      POSTGRES_DB: steelkeep
+      POSTGRES_PASSWORD_FILE: /run/steelkeep/metadata-password
+    volumes:
+      - metadata:/var/lib/postgresql/data
+      - ./.steelkeep/metadata-password:/run/steelkeep/metadata-password:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U steelkeep -d steelkeep"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  migrate:
+    build: .
+    image: steelkeep:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    command: [bun, server/migrate.ts]
+    environment: &application
+      STEELKEEP_DATABASE_PASSWORD_FILE: /run/steelkeep/metadata-password
+      STEELKEEP_DATABASE_HOST: database
+      STEELKEEP_KEY_FILE: /run/steelkeep/key
+      STEELKEEP_TOKEN_FILE: /run/steelkeep/token
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:?Configure allowed database and storage hosts}
+      STEELKEEP_ALLOWED_ORIGINS: ${STEELKEEP_ALLOWED_ORIGINS:-http://localhost:4310,http://127.0.0.1:4310}
+      STEELKEEP_PUBLIC_HOSTS: ${STEELKEEP_PUBLIC_HOSTS:-localhost,127.0.0.1}
+      STEELKEEP_SECURE_COOKIE: ${STEELKEEP_SECURE_COOKIE:-false}
+      HOST: 0.0.0.0
+      PORT: 4310
+    volumes: [./.steelkeep:/run/steelkeep:ro]
+    depends_on:
+      database: {condition: service_healthy}
+  web:
+    image: steelkeep:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    environment: *application
+    ports: ["127.0.0.1:4310:4310"]
+    volumes: [./.steelkeep:/run/steelkeep:ro]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.engines
+    image: steelkeep-engines:local
+    user: "${STEELKEEP_UID:-1000}:${STEELKEEP_GID:-1000}"
+    command: [bun, server/worker.ts]
+    environment: *application
+    volumes: [./.steelkeep:/run/steelkeep:ro]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+volumes:
+  metadata:

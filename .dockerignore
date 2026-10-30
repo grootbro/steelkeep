@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+.env.*
+.steelkeep
+dist
+.tanstack
+.playwright-cli
+output
+test-results

@@ -1,0 +1,83 @@
+# syntax=docker/dockerfile:1.7
+# Source-only recipe: not built or executed. See docs/native-tooling.md.
+ARG BUN_VERSION=1.4.0
+FROM oven/bun:${BUN_VERSION} AS bun
+
+# Extract Ubuntu's authenticated MySQL package instead of installing the package
+# that conflicts with mariadb-client-core. Keep both vendors' command families.
+FROM ubuntu:24.04 AS mysql8
+ARG TARGETARCH
+ARG MYSQL_CLIENT_VERSION=8.0.46-0ubuntu0.24.04.4
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN set -eu; \
+    case "$TARGETARCH" in amd64|arm64) ;; *) echo 'Only amd64 and arm64 are supported by this recipe' >&2; exit 1 ;; esac; \
+    apt-get update; \
+    mkdir -p /tmp/mysql-package /opt/mysql8; \
+    cd /tmp/mysql-package; \
+    apt-get download "mysql-client-core-8.0=${MYSQL_CLIENT_VERSION}"; \
+    dpkg-deb --field ./*.deb Package Version Architecture Depends > /opt/mysql8/package-metadata.txt; \
+    dpkg-deb --extract ./*.deb /opt/mysql8; \
+    rm -rf /tmp/mysql-package /var/lib/apt/lists/*
+
+FROM ubuntu:24.04 AS worker
+ARG TARGETARCH
+ARG MONGODB_TOOLS_VERSION=100.20.0
+ARG MARIADB_CLIENT_VERSION=1:11.4.13+maria~ubu2404
+ARG MARIADB_KEYRING_SHA256=403e0403df51273fbf5613e5644959d3f85923ef7d8f92e7d83eafe289093af4
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=UTC \
+    PATH=/opt/mysql8/usr/bin:/usr/lib/postgresql/17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=mysql8 /opt/mysql8 /opt/mysql8
+
+# Only repository metadata and signing keys are bootstrapped over HTTPS.
+# APT subsequently verifies repository signatures and package hashes.
+RUN set -eu; \
+    case "$TARGETARCH" in amd64|arm64) ;; *) echo 'Only amd64 and arm64 are supported by this recipe' >&2; exit 1 ;; esac; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg util-linux sqlite3 tzdata \
+      libedit2 libgcc-s1 liblz4-1 libssl3t64 libstdc++6 libzstd1 zlib1g; \
+    install -d -m 0755 /usr/share/keyrings; \
+    curl -fLSs --retry 3 --proto '=https' \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/keyrings/pgdg.asc; \
+    fingerprint="$(gpg --batch --show-keys --with-colons /usr/share/keyrings/pgdg.asc | awk -F: '$1=="fpr" {print $10; exit}')"; \
+    test "$fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8; \
+    curl -fLSs --retry 3 --proto '=https' \
+      https://supplychain.mariadb.com/mariadb-keyring-2025.gpg \
+      -o /usr/share/keyrings/mariadb.gpg; \
+    echo "${MARIADB_KEYRING_SHA256}  /usr/share/keyrings/mariadb.gpg" | sha256sum --check --status; \
+    curl -fLSs --retry 3 --proto '=https' \
+      https://pgp.mongodb.com/server-8.0.asc \
+      -o /usr/share/keyrings/mongodb-server-8.0.asc; \
+    printf 'deb [arch=%s signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main\n' "$TARGETARCH" > /etc/apt/sources.list.d/pgdg.list; \
+    printf 'deb [arch=%s signed-by=/usr/share/keyrings/mariadb.gpg] https://dlm.mariadb.com/repo/mariadb-server/11.4/repo/ubuntu noble main\n' "$TARGETARCH" > /etc/apt/sources.list.d/mariadb.list; \
+    printf 'deb [arch=%s signed-by=/usr/share/keyrings/mongodb-server-8.0.asc] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse\n' "$TARGETARCH" > /etc/apt/sources.list.d/mongodb.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      postgresql-client-17 \
+      "mariadb-client=${MARIADB_CLIENT_VERSION}" \
+      "mariadb-client-core=${MARIADB_CLIENT_VERSION}" \
+      "mongodb-database-tools=${MONGODB_TOOLS_VERSION}"; \
+    mkdir -p /usr/share/steelkeep; \
+    dpkg-query --show --showformat='${Package}\t${Version}\t${Architecture}\n' > /usr/share/steelkeep/installed-packages.tsv; \
+    cp /opt/mysql8/package-metadata.txt /usr/share/steelkeep/mysql-package.txt; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --gid 10001 steelkeep; \
+    useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin steelkeep
+
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+COPY server ./server
+COPY shared ./shared
+COPY tools/Steelkeep.DacFx ./tools/Steelkeep.DacFx
+COPY THIRD-PARTY-NOTICES.md ./
+# .NET, DacFx binaries and Microsoft tooling are intentionally NOT bundled here.
+# An explicitly provisioned Linux-x64 extension supplies them for the MSSQL profile.
+USER 10001:10001
+CMD ["bun", "server/worker.ts"]
