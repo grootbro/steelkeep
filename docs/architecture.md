@@ -4,15 +4,18 @@ TanStack Start owns the web application; Elysia owns REST/OpenAPI/MCP and applic
 PostgreSQL metadata, Kysely, pg-boss, isolated worker CLI, S3-compatible artifacts.
 Required engines: PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server. Shared adapter contracts, profile-specific consistency and validation. Never imply an untested version is supported.
 
-User correction: closely follow Databasement's actual operational composition and polish;
-the previous jade/muddy green direction is rejected. Cool neutral/slate surfaces, readable
-type and dense operational rows; blue/violet accents. Salt.md supplies secondary UX ideas.
-The user's permission includes licensed interface-code adaptation; preserve provenance.
+Databasement is the primary operational interface reference; adapted MIT material is
+attributed in THIRD-PARTY-NOTICES.md. Salt.md supplied interaction ideas only.
+The design specification is in DESIGN.md.
 
-Current execution policy: the owner's Mac Docker and application remain stopped. All installs, builds, typechecks, browsers and tests run on isolated server stands. An owner-authorized persistent HTTPS installation is now available separately from those stands. Existing historical local results below are evidence from the earlier phase, not instructions to restart local execution. Actual user database targets require the owner's selection; paid services and public repository publication need separate authorization.
+## Evidence boundaries
 
-Root integrates subagents with disjoint boundaries: src/design, native engines/restore,
-application API/MCP/schema/scheduler; root owns worker/deployment/docs and final contracts.
+Current native qualification for all eight bounded engine profiles is recorded in
+[server runtime](server-runtime.md). The notes below retain earlier checkpoints;
+statements about pending profiles describe those checkpoints, not the current ledger.
+No historical result automatically qualifies newer source or a rebuilt image.
+
+## Historical implementation checkpoints
 
 Implementation and local review started 31 October 2026. Frozen install, preserved key/token
 setup, migration 6, typecheck and build passed. The executor recorded latest 26 unit tests / 154
@@ -33,8 +36,8 @@ recovery (3 tests / 106 assertions), with an additional Linux-writer live-WAL re
 After the owner-approved Docker restart, MySQL 8.0.46 passed 1 test / 63 assertions and
 ClickHouse 25.8.12 passed 1 test / 20 assertions; PG/Maria passed again (2 / 27).
 Existing volumes were preserved, metadata amcheck passed, all 46 stored secrets decrypted
-and 19 existing S3 objects matched their recorded bytes/SHA-256. SQL Server runtime is
-still pending on an owner-provided nonproduction physical x64 Linux runner with EULA
+and 19 existing S3 objects matched their recorded bytes/SHA-256. At that checkpoint SQL Server runtime was
+still pending on an isolated Linux x64 runner with EULA
 acceptance; its .NET 10/DacFx helper has compiled, including the patched Pkcs dependency.
 Selected PostgreSQL cancellation/SIGKILL/restart quarantine passed (1 / 403 assertions),
 with a 12-second no-replay window. Permanent S3 refusals passed (1 / 510); an actual own-
@@ -53,9 +56,9 @@ S3 publication and trusted restore pipeline. MongoDB source-lock journals surviv
 death; ClickHouse native operation journals distinguish HTTP loss from server completion.
 SQL Server uses an optional .NET DacFx BACPAC portability helper, never passwords in argv.
 See [engine profiles](engine-profiles.md) and [fresh research](fresh-tech-research-20261031.md).
-The application and acceptance harnesses typecheck. Seven ordinary native recovery profiles
-have execution evidence; SQL Server runtime, broader adverse cases, additional packaged engine/architecture
-coverage and the latest mobile CSS packaged rerun remain proof obligations.
+The application and acceptance harnesses typecheck. At that checkpoint seven native recovery profiles had execution evidence. The later
+[server runtime ledger](server-runtime.md) adds SQL Server. Broader adverse cases and
+additional packaged engine/architecture coverage remain separate proof obligations.
 
 Scalar is pinned and served from the installation's own dependency asset, with CDN fonts,
 credential persistence and proxy disabled. Authenticated API/MCP responses use no-store.
@@ -91,7 +94,7 @@ characters and verify MySQL partial_revokes mode; quoted raw wildcard target gra
 refused when their scope is broader than the selected destination.
 
 Headless browser login and all six main sections rendered against the local runtime; an
-[overview screenshot](../output/playwright/local-overview.png) was saved. The real UI recovery
+historical overview screenshot (`output/playwright/local-overview.png`, retained outside Git) was saved. The real UI recovery
 suite passed both PostgreSQL and MariaDB scenarios; the latest full Playwright group
 passed 4/4 in 36.4s, including connection lifecycle and AI-agent issuance, real MCP/API
 scope enforcement and UI revocation. Recovery covered form-created profiles,

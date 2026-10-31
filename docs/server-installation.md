@@ -1,15 +1,45 @@
-# Owner server preview — 31 October 2026
+# Server installation
 
-Owner-authorized persistent installation: https://steelkeep.185-70-198-142.sslip.io/ on server A. This is a temporary DNS name with a verified public TLS certificate; no existing domain was changed. Runtime/configuration, private secret files, logs and releases are under `/opt/steelkeep`. Compose project `steelkeep-live` is separate from all proof stands and existing products. The web port14310 binds loopback only; metadata and S3 expose no host ports. Caddy gained exactly one host route and certificate policy; its45 existing HTTPS routes were preserved. Runtime containers have CPU/RAM limits and restart policies.
+Use the [README self-host instructions](../README.md#self-host) for a new installation.
+Run setup as the intended non-root service owner and keep private configuration
+outside Git. The default Compose stack supplies PostgreSQL metadata; supply a
+separate S3-compatible bucket and provision the native tools for your engine profile.
 
-The285-file accepted source snapshot is `ef8bae643ac1…`; its hashes were verified before and after the production frontend build. Existing dependencies/images were reused. The small Vite temporary-directory mount was corrected after two read-only-root build refusals; the final build succeeded. No local application, browser, dependencies or Docker were started. Deployment source and compiled-file hashes are in `/opt/steelkeep/logs/release-provenance.json`.
+## Network and credentials
 
-`Server storage` is a newly created private S3-compatible bucket on this host, checked available. There are no default owner credentials. Immediately before handoff, generate a private single-use five-minute owner setup link using the existing setup helper and this HTTPS origin. The user chooses their own name/email/password. Never save that link or the installation key in documentation. Secure HttpOnly cookies and exact host/origin allowlists are configured.
+- Set exact database and storage hostnames in `STEELKEEP_ALLOWED_HOSTS`.
+- Bind the application to loopback behind an HTTPS reverse proxy. Preserve Host
+  and streaming responses; configure the exact public host/origin and secure cookies.
+- Keep metadata, archive services and native fixtures off public ports.
+- Preserve `.steelkeep` permissions and an independent protected encryption-key
+  copy. Existing metadata volumes must retain their original password and key.
+- Generate a private five-minute owner setup link only when ready to use it. Do
+  not put the link, installation key or credentials in logs, issues or documentation.
 
-The first deployed native profile is PostgreSQL17, using exact17.11 clients and their musl library closure extracted from the existing pinned PostgreSQL image into `/opt/steelkeep/native-postgres`. No packages/images were installed. Read-only mounted wrappers preserve prlimit, private credential files, native arguments and cancellation. Other engine toolchains/mounts must be provisioned and checked before claiming they work on this instance; the eight application profiles alone do not establish runtime readiness. The old image MSSQL helper is disabled until its corrected helper is explicitly provisioned.
+## Runtime profiles
 
-Actual deployment proof: an isolated ten-row PostgreSQL source, restricted reader and temporary plan were created. HTTPS API queued a real worker backup `684da796-7809-4699-aa9a-f4a362fbdcae`; it completed preflight/manifest/dump/upload/publication. The2451-byte archive was streamed back over public HTTPS and SHA-256 matched `b8ee9a2450c5d455f317125ac2a7ec006661448acd4f2e2a1432e32184bd6e12`. Reviewed conditional deletion completed successfully. Only these verified synthetic metadata rows, database and role were then removed; S3 storage and evidence remain, and no owner account was created. Proof: `/opt/steelkeep/logs/first-backup-proof.json`. This does not prove a user database backup or restore.
+The eight adapters have different native tools, consistency requirements and
+privileges. Follow [engine profiles](engine-profiles.md), [native tooling](native-tooling.md)
+and the per-engine runtime guides before connecting a source. File-based engines
+need explicit worker mounts and root allowlists. Optional SQL Server tooling requires
+Linux x64 and the applicable Microsoft terms; the default worker does not include it.
 
-The application currently limits each archive to2GiB. Worker scratch is on private disk rather than a small tmpfs. About9.78GB remained after this check; preserve the8GiB host floor and use external storage/capacity before larger runs. Exact source/storage hostname allowlists must be updated for the owner's chosen target; no production database was connected by this deployment. Host-local archives are useful for trying the workflow but do not provide an independent offsite copy.
+The [server runtime ledger](server-runtime.md) records synthetic native qualification
+of separately provisioned tool bundles. It does not certify a new Docker build,
+every architecture, arbitrary database features or your installation.
 
-Canonical owner-provided origin is now `https://keep.ravefox.dev/`. DNS resolved to the authorized host and a public certificate was verified; root document, health and auth status returned200, while unauthenticated connections returned401. The prior temporary origin remains admitted for continuity. Only the web listener was recreated for domain admission; background jobs were not interrupted. All eight native profiles are now provisioned and qualified as recorded in server-runtime.md; the earlier first-profile-only deployment paragraph is historical.
+## First operation and upgrades
+
+Test both source and storage connections, create a manual plan, and inspect its
+actual worker phases and resulting snapshot. Independently test recovery into a
+separate empty destination before relying on backups. Archive metadata checks and
+complete-byte verification are distinct results.
+
+Allow disk space for native tools, worker scratch and the maximum archive size
+(currently 2 GiB). Bound worker CPU/RAM, keep a host free-space reserve and prefer
+independent offsite storage. A bucket on the database host is not an offsite copy.
+
+Before upgrading, preserve metadata, encryption keys, archive access and the prior
+release. Inspect active jobs and uncertain reservations. Never remove database or
+archive volumes as part of routine cleanup. Validate the new source/package at its
+actual revision, then verify HTTPS, sign-in, queue processing and a synthetic recovery.

@@ -1,36 +1,45 @@
-# Steelkeep
+# Steelkeep contributor guidance
 
-Self-hosted backup and recovery product. TanStack Start + Elysia are user choices.
-Read docs/architecture.md and the kickoff in /Users/dobrota/dev/reports/stillkeep-research-20261031.
-The owner expanded the objective to a complete platform on 31 October. Read GOAL.md for the current agreed scope; AI-agent support and all eight engine profiles are required.
+Self-hosted backup and reviewed recovery in TypeScript, TanStack Start and Elysia.
+Start with README.md, docs/architecture.md and GOAL.md. Current engine qualification
+is in docs/server-runtime.md; track remaining parity in docs/databasement-parity.md.
 
-## Current user instructions (31 October 2026, take priority)
+## Current workspace execution constraint
 
-- Latest owner authorization: deploy an accessible HTTPS installation on the server and provide a private first-owner link so the owner can inspect the interface and try their first backup. Keep this installation separate from synthetic stands and existing services. Actual user database connections require owner-specified targets; local execution remains suspended.
+The owner's Mac application runtimes and Docker must remain stopped. Local file
+reads/edits and Git are allowed. Application installs, builds, typechecks, tests and
+browsers must run only on an explicitly authorized isolated server stand. Do not
+restart local services or reinstall local dependencies without a new instruction.
+This restriction applies to this workspace, not to contributors' own CI runners.
 
-- **Latest owner override:** stop Docker Desktop and local development processes, clean this project's disposable files, and continue writing code locally. All further application runs, browsers, installs, builds, typechecks and test execution must happen on an isolated server stand. Do not restart local Docker/Vite or reinstall local dependencies without a new owner instruction. File reads/edits, Git and scoped cleanup remain local. Preserve database/artifact volumes, metadata/secrets, original brand assets and proof evidence. This supersedes the earlier local-preview/run authorization below.
-- The owner specifically requests a dedicated visual-design agent and close visual correspondence to Databasement, especially its dashboard and then the remaining screens. Inspect actual reference source/composition; keep Steelkeep's supplied PNG branding and improve polish without replacing the reference with a generic dashboard.
+## Changes and evidence
 
-- Code/design-first phase is complete enough for local review. On 31 October the owner asked «есть что локально посмотреть уже?»; local install/build/typecheck/tests and isolated Steelkeep fixture services are now authorized as necessary to provide a working local preview. Start and verify the app, provide its URL; preserve existing fixture volumes. Do not launch a visible browser prematurely or touch production. Earlier passed checks are historical evidence only.
-- UI must closely follow Databasement's polished operational dashboard and screens; use Salt.md as a second source of useful interaction/technology ideas. User rejected the muddy green direction. Read actual reference source, don't substitute personal minimalist styling.
-- User explicitly permits reusing open-source interface code subject to its license. Preserve attribution for adapted Databasement MIT code. Salt.md local source is AGPL; don't silently copy its code into differently licensed product.
-- User explicitly requests subagents. Keep their write boundaries disjoint; root integrates into one coherent app.
+- REST and MCP call the same application services. Native tools execute only in
+  the worker. Keep the UI connected to actual operations and truthful status data.
+- Preserve secrets, metadata, archives, reservations and original brand PNGs.
+  Never restore over a source, metadata database or nonempty target.
+- Never replay an uncertain restore after writes. Retain its target reservation
+  for operator reconciliation. Do not clear partial targets to make a proof pass.
+- Use isolated synthetic fixtures. Real database connections, deployment,
+  publication and paid services require separate authorization.
+- Some historical harnesses have exact checkout/fixture guards. Do not remove
+  those guards to make them run on a different machine.
+- Native recovery evidence requires actual dump/upload/download/restore,
+  independent complete-byte SHA-256 and independently queried restored data.
+  Typechecks, mocked screens and CLI exit codes establish narrower facts.
+- Reuse dependencies and images. Avoid rebuilding for ordinary code/CSS changes.
+  Inspect capacity before heavy work; preserve at least 8 GiB free on the authorized
+  shared stand. Remove only verified owned disposable resources; no global prune.
+- The owner requests parallel agents with disjoint write scopes. Integrate each
+  finished slice and its contracts before expanding the work.
 
-- Only synthetic isolated data. No production connections, deployment, publication or paid services.
-- The owner explicitly authorized choosing server A or B for a separate synthetic SQL Server acceptance stand on 31 October. Read-only capacity checks selected A (185.70.198.142). Keep the stand in its own project/network/paths with loopback ports and resource limits; do not connect existing services or change their databases. The owner explicitly confirmed Microsoft SQL Server EULA acceptance for this temporary Developer-edition stand. Keep at least 8 GiB free on A, cap build/runtime CPU and RAM, and clean only this stand’s verified build resources.
-- Preserve secrets and data; never restore over source, metadata DB, or a nonempty target.
-- REST and MCP call the same application services; native tools execute in worker only.
-- No optimistic job success or invented progress. Backup success, checksum and restore validation differ.
-- Never auto-retry a restore after writes. Unknown outcome stays interrupted and target blocked.
-- Tests must prove actual dump/upload/download/restore and fixture data through UI and MCP.
-- Keep history and safe error states. No secret in response, command argv or persisted log.
-- Implement finished slices; do not replace the requested product with a mocked dashboard.
+## Interface and licenses
 
-## Local resources
+Follow Databasement's actual operational composition, particularly its dashboard,
+while retaining Steelkeep's original PNG mark/wordmark and Inter/Milk/Graphite/Violet
+design. Use one light/dark icon button. Read DESIGN.md and reference source before
+changing composition; generic dashboard styling does not establish visual parity.
 
-- Local execution is currently suspended by the latest owner override. The existing dependencies/build output were removed as reproducible files; the lockfile remains authoritative. Instructions below describe the earlier development workflow and do not authorize restarting it.
-
-- Use the existing Vite server and source-mounted API/worker for code, CSS and auth work. Do not rebuild Docker images for UI edits.
-- Build immutable images only for an explicit packaging checkpoint or changed native dependencies. Build one image at a time; inspect host free space first and never assume a warm cache.
-- After heavy acceptance, remove this checkout's obsolete images and build-history/cache records by verified identifiers. Keep one reusable worker image; never use global prune or remove database/artifact volumes.
-- A persistent package cache must live in a named BuildKit cache mount, not in every image layer. Cache mounts are not a disk quota; inspect and clean this project's unused cache after packaging.
+Databasement adaptations retain MIT attribution in THIRD-PARTY-NOTICES.md. Salt.md
+is an interaction reference only; do not copy its AGPL code/assets into this MIT
+project without resolving licensing. Optional Microsoft tooling keeps its own terms.

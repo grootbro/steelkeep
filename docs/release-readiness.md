@@ -12,3 +12,34 @@ Prepared as an alpha source release; no repository has been created, pushed or p
 Before publishing: choose the GitHub namespace/repository, review any operator-specific acceptance paths and internal deployment notes, and read the final diff. Keep the alpha/profile limitations visible. A public source release does not imply that every native image, provider, production schema or adverse execution boundary has passed. Clean immutable all-engine packaging remains a separate qualification step; current native runtime evidence is in server-runtime.md.
 
 The seven newly added native proof scripts passed the combined server acceptance typecheck. Self-host Compose syntax and Dockerfile helper-copy input were checked on the server. The new dashboard redesign is a separate, subsequent change and must receive its own current-source rendering/data checks before deployment.
+
+## GitHub source preparation — 1 November 2026
+
+- README now has original theme-aware branding, honest static badges, light/dark
+  interface captures with synthetic-data provenance, a feature overview, numbered
+  setup, MCP entry points and a documentation navigator. No CI-passing, star-count
+  or production-certification badge is claimed.
+- `.github/workflows/ci.yml` pins checkout/setup-bun to verified commit IDs. It has
+  read-only repository permissions, no persisted checkout credentials, concurrency
+  cancellation and a 15-minute job. It runs locked install, both TypeScript checks,
+  default tests and the web build; no native fixtures or deployment. The first
+  actual GitHub run is pending.
+- Issue/PR templates request synthetic reproduction and sanitized evidence. Enable
+  GitHub private vulnerability reporting when creating the repository.
+- Public installation/architecture instructions no longer identify the operator's
+  deployment host. Original operator documents and stale design-agent state were
+  preserved outside this checkout; current design authority is DESIGN.md.
+- An independent read-only audit examined 27 commits, 305 tracked paths and 584
+  historical text blobs. Selected secret patterns found no actual credentials;
+  credential URLs were fixtures, placeholders or interpolation. No tracked runtime
+  state/archives/keys were found, and the largest historical blob was 1.43 MB.
+  This is a bounded source-publication audit, not a dependency/security certification.
+- Historical personal paths and topology remain in Git history. Exact-path guards
+  remain in historical harnesses deliberately. No history rewrite was performed.
+- Static Markdown checks found no broken relative file links, YAML parsed, and Git
+  whitespace checks passed. No local application, browser, install, build or tests ran.
+
+Before the upload, review the final staged diff, choose the repository namespace
+and visibility, and explicitly decide which unfinished feature changes to include.
+Keep source-release preparation separate from dashboard/runtime acceptance. No
+remote repository, push, public release or deployment was created by this preparation.

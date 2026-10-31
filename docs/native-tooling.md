@@ -1,6 +1,7 @@
 # Native worker tooling
 
-Status: **ARM64 development image built; seven ordinary native recovery profiles verified, 31 October 2026**.
+Packaging checkpoint: **ARM64 development image built; seven native profiles verified at that checkpoint, 31 October 2026**.
+Current separately provisioned server-native qualification covers all eight bounded profiles; see [server runtime](server-runtime.md). It does not qualify a new immutable all-engine image.
 The primary executor observed the Ubuntu `Dockerfile.engines` build and running development
 API/worker. Current `server`/`shared` source is bind-mounted into those containers. The separate ARM64 no-source-bind packaged PG/Maria proof subsequently passed
 1 test / 91 assertions in 10.09s. This does not qualify amd64 or every packaged profile. Development and self-hosted Compose select this recipe; the Alpine alternative remains.
@@ -24,7 +25,7 @@ The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the offici
 PostgreSQL 17, MariaDB 11, MongoDB 8.0.34/Tools100.20, Redis 7.4.12 and SQLite passed
 real local native MCP recovery with this development runtime. Post-restart MySQL 8.0.46
 passed 1 test / 63 assertions; ClickHouse 25.8.12 passed 1 test / 20 assertions.
-SQL Server runtime remains pending on a supported nonproduction physical x64 Linux runner. A successful image build or packaged client does not establish additional server-version, schema or consistency support.
+SQL Server runtime was pending at that checkpoint; the later isolated x64 proof is recorded in [server runtime](server-runtime.md). A successful image build or packaged client does not establish additional server-version, schema or consistency support.
 
 ## Coexisting MySQL and MariaDB
 

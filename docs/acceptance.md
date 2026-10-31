@@ -136,7 +136,7 @@ Results apply to that checkout and fixture environment; later source changes nee
 | Transient storage retry | 1 test / 21 assertions passed in 14.70s | Own RustFS same-ID stop/start; same job attempt 2 success, one artifact and independent GET/SHA |
 | Post-restart integrity checks | amcheck; 46 secrets; 19 stored objects passed | Existing metadata structure, credential decryption and full object bytes/SHA before later acceptance artifacts |
 | Independent SQL in MCP harness | Passed | PG: 1,000 entries, `625625.00` sum, next project identity 2. MariaDB: 3 entries, `7.5` sum |
-| Headless browser smoke | Login and six main sections rendered | [Overview screenshot](../output/playwright/local-overview.png); render evidence, separate from recovery below |
+| Headless browser smoke | Login and six main sections rendered | Historical screenshot: `output/playwright/local-overview.png` (not distributed); render evidence, separate from recovery below |
 | Full Playwright recovery + management suite | Latest 4/4 passed in 36.4s | PG/Maria forms/jobs/S3/restore with independent reads; connection lifecycle and agent scopes/revocation |
 | Authenticated Scalar `/openapi` | API heading and full operation list rendered; zero page errors | Same-origin local bundle, real headless browser |
 

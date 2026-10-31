@@ -18,7 +18,7 @@ Console результат, exec session `56332`, exit code `0`:
 2 passed (28.5s)
 ```
 
-После этого запуска отдельно прочитан локальный [`.last-run.json`](../../test-results/ui-recovery/.last-run.json): `status: "passed"`, `failedTests: []`. Этот служебный файл не содержит полного отчёта и может быть заменён следующим запуском. Полный JSON report не сохранялся; количество сценариев и timings подтверждены console output root.
+После этого запуска отдельно прочитан локальный `.last-run.json` (`test-results/ui-recovery/`, не входит в Git): `status: "passed"`, `failedTests: []`. Этот служебный файл не содержит полного отчёта и может быть заменён следующим запуском. Полный JSON report не сохранялся; количество сценариев и timings подтверждены console output root.
 
 Дополнительно root независимо прочитал metadata: последние четыре UI-created operation rows — два backup и два restore — имели `succeeded`, оба restore содержали validation `passed`. Сам suite также выполнял независимые SQL и S3 assertions, описанные ниже. Утверждение относится к этому изолированному запуску PostgreSQL 17 и MariaDB 11.
 

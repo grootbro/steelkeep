@@ -1,22 +1,58 @@
+<div align="center">
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="public/brandassets/lockup-dark.png">
-  <img src="public/brandassets/lockup-light.png" alt="steelkeep" width="480">
+  <img src="public/brandassets/lockup-light.png" alt="steelkeep" width="560">
 </picture>
 
-Self-hosted database backups and reviewed recovery. TypeScript, TanStack Start and Elysia, with a web dashboard, REST/OpenAPI and native MCP for AI agents.
+### Database backups. A clear path to recovery.
 
-**Alpha software.** Eight engine adapters are implemented. Each has a deliberately bounded version and schema profile; the [acceptance ledger](docs/acceptance.md) distinguishes actual native recovery from metadata, UI and packaging checks. Full Databasement parity and the complete failure matrix are still in progress.
+Self-hosted backups for eight database engines, with a web dashboard<br>
+and native MCP access for your AI agents.
 
-## What it does
+<p>
+  <a href="#project-status"><img src="https://img.shields.io/badge/status-alpha-F59E0B?style=flat-square&amp;labelColor=0F172A" alt="Status: alpha"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366F1?style=flat-square&amp;labelColor=0F172A" alt="License: MIT"></a>
+  <a href="#database-profiles"><img src="https://img.shields.io/badge/database_engines-8-3B82F6?style=flat-square&amp;labelColor=0F172A" alt="Eight database engine profiles"></a>
+  <a href="#api-and-ai-agents"><img src="https://img.shields.io/badge/MCP-native-8B5CF6?style=flat-square&amp;labelColor=0F172A" alt="Native MCP server"></a>
+</p>
 
-- Database and S3-compatible storage connections, sealed credentials and revision-safe edits.
-- Manual backups and timezone-aware schedules, persistent queueing, logs and filterable history.
-- Immutable archives, SHA-256 verification, scoped streaming downloads and snapshot notes.
-- Reviewed recovery into a separate, precreated empty destination; target identity and permissions are checked before writes.
-- Keep-all by default; optional retention tiers, snapshot locks and explicitly reviewed single/bulk deletion.
-- Owner email/password access and named AI agents with scoped, expiring, revocable credentials.
-- The same application commands through the dashboard, REST, OpenAPI/Scalar and MCP.
-- Light and dark appearance with the original Steelkeep artwork.
+**[Get started](#self-host)** · **[Database profiles](#database-profiles)** · **[AI agents](#api-and-ai-agents)** · **[Documentation](#documentation)**
+
+PostgreSQL · MySQL · MariaDB · MongoDB<br>
+SQLite · Redis · ClickHouse · SQL Server
+
+</div>
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
+  <img src="docs/assets/dashboard-light.png" alt="Steelkeep dashboard with backup activity, recent jobs, snapshot totals and storage distribution" width="1440">
+</picture>
+
+<p align="center"><sub>Light and dark themes · Actual interface with synthetic demonstration data · <a href="docs/assets/README.md">Screenshot details</a></sub></p>
+
+## Why Steelkeep
+
+Keep database connections, backup schedules, snapshots and recovery in one place.
+See what the worker is doing, inspect the archive it created, and review the destination
+before a restore writes data. Use the dashboard or give a scoped AI agent access to the same operations.
+
+| Connect & inspect | Schedule & recover |
+| :--- | :--- |
+| **🗄️ Eight database engines**<br>PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server, each with an explicit recovery profile. | **🗓️ Backups on your schedule**<br>Run manually or use timezone-aware schedules. Follow persistent jobs, worker phases and logs. |
+| **🔎 Inspect every snapshot**<br>Archive size, SHA-256, availability checks, notes and scoped downloads. Keep all snapshots or choose retention tiers. | **↩️ Review before recovery**<br>Check a separate empty target, verify downloaded bytes and inspect schema/data validation after restore. |
+| **🤖 Built for AI agents**<br>Native MCP, REST and OpenAPI. Named agents get scoped credentials with expiry, delegation limits and revocation. | **🏠 Run it yourself**<br>Your infrastructure and S3-compatible storage. Email/password sign-in, sealed connection credentials and light/dark themes. |
+
+## Project status
+
+> [!IMPORTANT]
+> **Steelkeep is alpha software.** All eight engine profiles have bounded synthetic
+> native recovery evidence. Full feature parity, broader failure testing and a clean
+> all-engine distribution image remain in progress. Check the
+> [runtime ledger](docs/server-runtime.md) and [engine profiles](docs/engine-profiles.md)
+> before trusting a real database to a particular installation.
 
 ## Database profiles
 
@@ -31,16 +67,36 @@ Self-hosted database backups and reviewed recovery. TypeScript, TanStack Start a
 | ClickHouse | 25.8, Atomic / plain MergeTree | Server-native backup, an owner-maintained idle window and a backup disk shared with the worker. |
 | SQL Server | 2019 / 2022 profile; 2022 tested | Read-only source, .NET 10 Linux x64 / DacFx 170.5.96; BACPAC logical portability. |
 
-These are engine-specific profiles, not arbitrary-version or cluster support. Current archives are limited to 2 GiB. MySQL/MariaDB stored programs, views, triggers/events and non-InnoDB tables are refused. MongoDB replica sets/shards and ClickHouse distributed/replicated tables require additional profiles. BACPAC is not native `.bak`, log-chain recovery or PITR. Read [engine profiles](docs/engine-profiles.md) before connecting a real database. The current [server runtime ledger](docs/server-runtime.md) records exact native tools and independent recovery proofs.
+Archives currently have a **2 GiB limit**. Each profile has version, schema and
+consistency requirements; eight adapters do not imply arbitrary-version or cluster support.
+
+<details>
+<summary><strong>Read the engine boundaries before connecting a database</strong></summary>
+
+MySQL/MariaDB refuse stored programs, views, triggers/events and non-InnoDB tables.
+MongoDB replica sets/shards and ClickHouse distributed/replicated tables need additional
+profiles. SQL Server BACPAC is logical portability, not native `.bak`, log-chain recovery
+or PITR. Source locking and maintenance requirements vary by engine.
+
+Read the [full profiles](docs/engine-profiles.md), [native tooling](docs/native-tooling.md)
+and [independent runtime evidence](docs/server-runtime.md).
+
+</details>
 
 ## Self-host
 
-Run setup as the intended non-root service owner. Prerequisites: Bun 1.4 for setup, Docker Compose, an S3-compatible bucket with credentials, and network access from the worker to the chosen database. Native package pins are in [Dockerfile.engines](Dockerfile.engines). SQL Server additionally needs the explicit [x64 extension](Dockerfile.mssql) and applicable Microsoft terms; it is not silently downloaded by the default stack.
+**You’ll need:** Bun 1.4 for setup, Docker Compose, an S3-compatible bucket with credentials, and network access from the worker to the chosen database. Run setup as the intended non-root service owner. Native package pins are in [Dockerfile.engines](Dockerfile.engines). SQL Server additionally needs the explicit [x64 extension](Dockerfile.mssql) and applicable Microsoft terms; it is not silently downloaded by the default stack.
+
+### 1. Prepare your installation
+
+From a source checkout:
 
 ```sh
 bun install --frozen-lockfile
 bun scripts/setup-local.ts
 ```
+
+### 2. Configure access
 
 Edit `.env` before starting. Set exact database and S3 hostnames in `STEELKEEP_ALLOWED_HOSTS`. For HTTPS also set:
 
@@ -49,6 +105,8 @@ STEELKEEP_PUBLIC_HOSTS=backup.example.com
 STEELKEEP_ALLOWED_ORIGINS=https://backup.example.com
 STEELKEEP_SECURE_COOKIE=true
 ```
+
+### 3. Build once and start
 
 Keep the generated `.steelkeep/key`, `.steelkeep/token` and `.steelkeep/metadata-password` private. Setup preserves existing files. Build the web and multi-engine worker once, then start:
 
@@ -61,10 +119,14 @@ docker compose -f compose.selfhost.yaml up -d --no-build --pull never
 
 The web server binds `127.0.0.1:4310` on the host. Put your HTTPS reverse proxy in front of that port; preserve the Host header and streaming responses. Metadata and archive storage are separate: the Compose file provisions PostgreSQL metadata, while you supply the S3 bucket. Worker-local SQLite files and ClickHouse shared disks need explicit mounts and allowlists described in [engine profiles](docs/engine-profiles.md).
 
+### 4. Create your account
+
 Create a private, single-use setup link immediately before opening it:
 
 ```sh
-docker compose -f compose.selfhost.yaml exec   -e STEELKEEP_SETUP_ORIGIN=https://backup.example.com   web bun scripts/setup-owner.ts
+docker compose -f compose.selfhost.yaml exec \
+  -e STEELKEEP_SETUP_ORIGIN=https://backup.example.com \
+  web bun scripts/setup-owner.ts
 ```
 
 The link expires in five minutes and contains no installation key. Choose your name, email and password; later visits use ordinary sign-in. For loopback-only HTTP testing, use `http://127.0.0.1:4310` and `STEELKEEP_SECURE_COOKIE=false`. See [authentication](docs/authentication.md).
@@ -76,22 +138,65 @@ The link expires in five minutes and contains no installation key. Choose your n
 3. Follow the actual worker phases in Jobs. Open the resulting snapshot to inspect size, SHA-256, availability and logs.
 4. Test recovery into a separate empty destination. A stored archive and a successful restore validation are distinct results.
 
-Keep an independent protected copy of the metadata encryption key. Losing it makes stored connection credentials unrecoverable. Artifacts are not claimed to be client-side encrypted; configure storage encryption and offsite retention separately.
+> [!NOTE]
+> Keep an independent protected copy of the metadata encryption key. Losing it makes
+> stored connection credentials unrecoverable. Configure archive encryption and offsite
+> retention in your storage; client-side archive encryption is not implemented.
 
 ## API and AI agents
 
-- REST: `/api/v1`
-- Scalar documentation: `/openapi`; JSON: `/openapi/json`
-- Native MCP Streamable HTTP: `/mcp`
-- Agent guidance: `/steelkeep-agent.md`
+Connect your MCP client to your installation:
 
-Create a named agent in Configuration → AI agents. The default grant is read-only with 24-hour expiry; tokens are shown once and stored hashed. Scopes are `read`, `configure`, `backup:run`, `restore:run`, `jobs:cancel`, `agents:manage`, `backup:delete` and `backup:download`. Delegation cannot increase permissions or outlive its issuer. Revocation includes descendants. No model-provider account is required. [Agent access](docs/authentication.md) and [architecture](docs/architecture.md).
+```text
+https://backup.example.com/mcp
+```
 
-## Recovery and deletion guarantees
+| Interface | Endpoint | Use it for |
+| :--- | :--- | :--- |
+| **MCP** | `/mcp` | Native Streamable HTTP tools for AI agents |
+| **REST** | `/api/v1` | Scripts, integrations and application commands |
+| **OpenAPI / Scalar** | `/openapi` · `/openapi/json` | Browse the API and its schemas |
+| **Agent guide** | `/steelkeep-agent.md` | Installation-served operating instructions |
+
+Create an agent in **Configuration → AI agents**, then give its token to your MCP
+client as a bearer credential. The default grant is read-only and expires in 24 hours.
+Tokens are shown once and stored hashed. Delegation cannot increase permissions or
+outlive its issuer; revocation includes descendants. No model-provider account is required.
+
+<details>
+<summary>Available agent scopes</summary>
+
+`read` · `configure` · `backup:run` · `restore:run` · `jobs:cancel` ·
+`agents:manage` · `backup:delete` · `backup:download`
+
+See [authentication and agent access](docs/authentication.md).
+
+</details>
+
+## How recovery stays deliberate
 
 An empty-target review expires and is bound to the actor, source artifact, destination identity and permissions. SHA-256 is checked before restore writes. Unknown restore outcomes retain a destination reservation and are never automatically replayed; inspect partial data and prepare a fresh target.
 
 Snapshot availability HEAD checks inspect object metadata, not downloaded bytes. Native downloads and restores verify complete bytes. Manual deletion requires a reviewed selection and explicit acknowledgement; ambiguous conditional deletes stay held without retry. See [downloads](docs/snapshot-downloads.md), [reviewed deletion](docs/snapshot-deletion.md) and [retention](docs/retention.md).
+
+## Documentation
+
+| Start here | Go deeper |
+| :--- | :--- |
+| [Installation](docs/server-installation.md) | [Architecture](docs/architecture.md) |
+| [Engine profiles and permissions](docs/engine-profiles.md) | [Native tooling](docs/native-tooling.md) |
+| [Sign-in and AI agents](docs/authentication.md) | [Recovery acceptance evidence](docs/acceptance.md) |
+| [Retention policies](docs/retention.md) | [Runtime qualification](docs/server-runtime.md) |
+| [Snapshot downloads](docs/snapshot-downloads.md) | [Feature parity and remaining work](docs/databasement-parity.md) |
+| [Reviewed deletion](docs/snapshot-deletion.md) | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) |
+
+## Built with
+
+**TypeScript** · **TanStack Start / Router / DB** · **React** · **Elysia** · **Bun**<br>
+PostgreSQL metadata · Kysely · pg-boss · S3-compatible archives
+
+The web dashboard, REST API and MCP server call the same application services.
+Native tools run in the worker.
 
 ## Development
 
@@ -103,7 +208,16 @@ bun run typecheck:acceptance
 bun run test
 ```
 
-Default tests do not start database fixtures. Native recovery acceptance must independently verify stored archive bytes and restored data. Historical proofs do not automatically qualify newer source, packages or rebuilt images. The [acceptance ledger](docs/acceptance.md), [native tooling](docs/native-tooling.md) and [parity tracker](docs/databasement-parity.md) record those boundaries.
+Default tests do not start database fixtures. The CI workflow installs locked dependencies,
+runs both TypeScript checks and default tests, and builds the web application. Its first
+GitHub run is pending; it does not qualify native recovery.
+
+Some historical acceptance harnesses deliberately require their original absolute checkout
+and fixture identities. They are operator-specific tools, not a portable test suite;
+don't remove their guards just to run them elsewhere. Native acceptance requires
+independent archive-byte and restored-data checks. Historical proofs don't automatically
+qualify newer source, packages or images. See the [acceptance ledger](docs/acceptance.md),
+[native tooling](docs/native-tooling.md) and [parity tracker](docs/databasement-parity.md).
 
 ## Contributing and license
 

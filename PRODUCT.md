@@ -16,11 +16,11 @@ Back up multiple database engines, understand real operations, and safely recove
 
 ## Operating Context
 
-Self-hosted UI, OpenAPI and native MCP share operations and history. AI agents are first-class clients: named identities, scoped expiring revocable tokens, safe configuration and operations, audit; no model subscription required. Initial fixtures are isolated synthetic databases and local S3-compatible storage. No production/deploy/publication/spend permission.
+Self-hosted UI, OpenAPI and native MCP share operations and history. AI agents are first-class clients: named identities, scoped expiring revocable tokens, safe configuration and operations, audit; no model subscription required. Initial fixtures are isolated synthetic databases and local S3-compatible storage. Execution, real data connections and publication require an authorized target and scope.
 
 ## Capabilities and Constraints
 
-TanStack Start + Elysia are user choices. TanStack DB is explicitly desired. Durable jobs/schedules, safe secrets, separate empty restore target, cancellation and meaningful logs are mandatory. The owner expanded the active goal to a complete platform; GOAL.md is the current scope. Local runtime review and isolated synthetic checks are authorized. Use Vite/source mounts and avoid Docker builds for routine code or UI changes.
+TanStack Start + Elysia are user choices. TanStack DB is explicitly desired. Durable jobs/schedules, safe secrets, separate empty restore target, cancellation and meaningful logs are mandatory. The owner expanded the active goal to a complete platform; GOAL.md is the current scope. Use isolated synthetic checks and source mounts where authorized; avoid Docker builds for routine code or UI changes. Follow AGENTS.md for the active execution constraints.
 
 ## Brand Commitments
 
@@ -28,7 +28,7 @@ Working name Steelkeep. Main functional AND visual reference is Databasement; th
 
 ## Evidence on Hand
 
-Research and kickoff: /Users/dobrota/dev/reports/stillkeep-research-20261031. Databasement source: /tmp/stillkeep-research/databasement-ux. Salt source: /Users/dobrota/work/sekta/repos/salt-review-20261013. Current code is incomplete; earlier nine passing foundation tests do not prove product acceptance.
+Current qualification is recorded in docs/server-runtime.md and docs/acceptance.md. Reference provenance is in THIRD-PARTY-NOTICES.md. Earlier foundation tests do not establish complete product acceptance.
 
 ## Product Principles
 

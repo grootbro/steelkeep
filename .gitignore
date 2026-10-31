@@ -12,3 +12,8 @@ playwright-report/
 output/
 tools/**/bin/
 tools/**/obj/
+.DS_Store
+*.log
+*.pem
+*.key
+.impeccable/

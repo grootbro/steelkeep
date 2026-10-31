@@ -13,3 +13,8 @@ test-results
 playwright-report
 tools/**/bin
 tools/**/obj
+.DS_Store
+*.log
+*.pem
+*.key
+.impeccable
