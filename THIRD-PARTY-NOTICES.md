@@ -3,7 +3,8 @@
 ## Databasement
 
 Steelkeep's dashboard composition and operation-list structure are adapted from Databasement's
-MIT-licensed views, rewritten for React/TanStack Start. Source commit:
+MIT-licensed views, rewritten for React/TanStack Start. Retention selection semantics
+are adapted from its retention action, rewritten in TypeScript. Source commit:
 `e7535032de8570f97b982c857b809caa7f1f4a24`.
 
 - resources/views/livewire/dashboard.blade.php
@@ -11,6 +12,7 @@ MIT-licensed views, rewritten for React/TanStack Start. Source commit:
 - resources/views/livewire/dashboard/jobs-activity-chart.blade.php
 - resources/views/livewire/dashboard/latest-jobs.blade.php
 - resources/views/livewire/database-server/show.blade.php (profile composition, rewritten in React)
+- app/Actions/Snapshot/ApplyRetentionPoliciesAction.php (latest-N/GFS selection semantics)
 
 Upstream: https://github.com/David-Crty/databasement
 

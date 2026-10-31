@@ -81,6 +81,18 @@ try {
     }
     // No owner or password is bootstrapped by migration.
     if(!versions.has(7)){await migrateOwnerAuth(trx);await sql`INSERT INTO steelkeep_migrations(version) VALUES(7)`.execute(trx)}
+    if(!versions.has(8)){
+      await sql`ALTER TABLE plans ADD COLUMN retention_policy jsonb NOT NULL DEFAULT '{"mode":"keep_all"}',ADD COLUMN retention_enabled boolean NOT NULL DEFAULT false,ADD COLUMN retention_revision integer NOT NULL DEFAULT 1 CHECK(retention_revision>=1),ADD COLUMN retention_checked_at timestamptz,ADD COLUMN retention_error_code text,ADD COLUMN retention_error_message text`.execute(trx)
+      await sql`ALTER TABLE artifacts ADD COLUMN retention_locked boolean NOT NULL DEFAULT false,ADD COLUMN deletion_state text NOT NULL DEFAULT 'active' CHECK(deletion_state IN ('active','queued','deleting','held','deleted')),ADD COLUMN deleted_at timestamptz`.execute(trx)
+      await sql`CREATE TABLE retention_jobs(id uuid PRIMARY KEY,plan_id uuid NOT NULL REFERENCES plans,artifact_id uuid NOT NULL REFERENCES artifacts,policy_revision integer NOT NULL,storage_revision integer NOT NULL,status text NOT NULL CHECK(status IN ('queued','deleting','retry_wait','held','cancelled','succeeded')),attempt integer NOT NULL DEFAULT 0,max_attempts integer NOT NULL DEFAULT 3,next_attempt_at timestamptz,execution_token uuid,worker_epoch uuid,object_etag text,object_version_id text,error_code text,error_message text,actor text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),finished_at timestamptz)`.execute(trx)
+      await sql`CREATE UNIQUE INDEX retention_jobs_open_artifact ON retention_jobs(artifact_id) WHERE status IN ('queued','deleting','retry_wait','held')`.execute(trx)
+      await sql`CREATE INDEX retention_jobs_due ON retention_jobs(next_attempt_at,created_at) WHERE status IN ('queued','retry_wait')`.execute(trx)
+      await sql`CREATE INDEX runs_plan_artifact ON runs(plan_id,artifact_id) WHERE type='backup' AND status='succeeded'`.execute(trx)
+      await sql`CREATE INDEX runs_restore_artifact ON runs(artifact_id,status) WHERE type='restore'`.execute(trx)
+      await sql`CREATE INDEX restore_intents_artifact_pin ON restore_intents(artifact_id,expires_at) WHERE consumed_run_id IS NULL`.execute(trx)
+      await sql`CREATE TABLE retention_requests(key text PRIMARY KEY,actor text NOT NULL,plan_id uuid NOT NULL REFERENCES plans,job_id uuid REFERENCES retention_jobs,kind text NOT NULL,revision integer NOT NULL,response jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`.execute(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(8)`.execute(trx)
+    }
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

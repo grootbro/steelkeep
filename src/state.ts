@@ -2,12 +2,13 @@ import {QueryClient} from '@tanstack/react-query'
 import {DbClient,collectionOptions} from '@tanstack/react-db'
 import {queryCollectionOptions} from '@tanstack/query-db-collection'
 import type {DatabaseKind} from '../shared/engines'
+import type {RetentionSettings,RetentionLock} from './retention-types'
 
 export type JobStatus='queued'|'running'|'cancelling'|'succeeded'|'failed'|'cancelled'|'interrupted'
 export type Job={id:string;type:string;status:JobStatus;phase:string;plan_id:string|null;source_id:string;storage_id:string;created_at:string;started_at:string|null;finished_at:string|null;heartbeat_at:string|null;error_message:string|null;attempt:number;target_id?:string|null;validation?:Record<string,unknown>|null}
 export type Connection={id:string;name:string;kind:DatabaseKind|'s3';revision:number;updated_at:string;blocked?:boolean;config:Record<string,unknown>;check_status:string;checked_at:string|null}
-export type Plan={id:string;name:string;source_id:string;storage_id:string;cron:string|null;timezone:string;next_due:string|null;enabled:boolean;upcoming?:string[]}
-export type Artifact={id:string;source_id:string;run_id:string;size:string;sha256:string;created_at:string;checked_at:string|null;availability:string;engine:string;storage_id:string;last_restore?:{status:string;validation:Record<string,unknown>|null;finished_at:string|null}|null}
+export type Plan={id:string;name:string;source_id:string;storage_id:string;cron:string|null;timezone:string;next_due:string|null;enabled:boolean;upcoming?:string[];retention?:RetentionSettings}
+export type Artifact={id:string;source_id:string;run_id:string;size:string;sha256:string;created_at:string;checked_at:string|null;availability:string;engine:string;storage_id:string;retention_locked?:boolean;deletion_state?:RetentionLock['deletion_state'];deleted_at?:string|null;last_restore?:{status:string;validation:Record<string,unknown>|null;finished_at:string|null}|null}
 export type ArtifactCheck={id:string;availability:'present'|'missing'|'changed'|'unknown';checkedAt:string|null;verification:'object-head-only';checks:{objectExists:boolean|null;sizeMatches:boolean|null;metadataSha256Matches:boolean|null};reason:string;message:string;stale:boolean}
 export type ActivityDay={date:string;backup:number;restore:number;failed:number}
 export type RestoreIntent={intentId:string;expiresAt:string;review:{artifactId:string;targetId:string;fingerprint:string;engine:string;sourceDatabase:string;targetDatabase:string;serverVersion?:string;sourceVersion?:string;targetVersion?:string;warnings?:string[];checks:unknown}}

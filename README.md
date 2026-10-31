@@ -193,3 +193,5 @@ The passing web image excludes the three newer mobile CSS declarations.
 Only isolated synthetic databases/storage were used. No production connection, publication,
 deployment or paid service was used.
 MIT licensed; adapted interface provenance and font notices: [third-party notices](THIRD-PARTY-NOTICES.md).
+
+Snapshot cleanup is opt-in: [retention policies, permissions and qualified storage behavior](docs/retention.md). Existing archives remain retain-all after migration.

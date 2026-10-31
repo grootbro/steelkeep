@@ -14,6 +14,7 @@ import {sourceBlocked} from './source-locks'
 import {probeArtifactAvailability,availabilityStates,type Availability} from './artifact-availability'
 import {AgentServices,audit} from './agents'
 import {authenticateRequest} from './auth'
+import {RetentionServices,retainedPlanDto} from './retention'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
 
 export {engineProfiles} from '../shared/engines'
@@ -87,7 +88,8 @@ function validateConnectionUpdate(input:ConnectionUpdateInput){
 
 export class Services {
  readonly agents:AgentServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db)}
+ readonly retention:RetentionServices
+ constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db)}
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
   .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])
@@ -225,7 +227,7 @@ export class Services {
   if(!updated)return {status:'stale' as const,error:'The connection changed during this check. Test the current revision again.'}
   return result
  }
- async plans(){return (await this.db.selectFrom('plans').selectAll().orderBy('created_at','desc').execute()).map(row=>({...row,upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}))}
+ async plans(){return (await this.db.selectFrom('plans').selectAll().orderBy('created_at','desc').execute()).map(row=>({...retainedPlanDto(row),upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}))}
  async scheduleOccurrences(planId:string){
   validId(planId)
   const plan=await this.db.selectFrom('plans').select('id').where('id','=',planId).executeTakeFirst()
@@ -247,9 +249,9 @@ export class Services {
   if(!input.name.trim())throw new AppError('INVALID_PLAN','Enter a plan name.')
   validId(id);try{new Intl.DateTimeFormat('en',{timeZone:input.timezone}).format()}catch{throw new AppError('INVALID_TIMEZONE','Choose an IANA timezone.')}
   const cron=input.cron?.trim()||null,next=input.enabled&&cron?nextOccurrence(cron,input.timezone):null
-  const row=await this.db.transaction().execute(async trx=>{const row=await trx.updateTable('plans').set({name:input.name.trim(),cron,timezone:input.timezone,enabled:input.enabled,next_due:next}).where('id','=',id).returningAll().executeTakeFirst();if(row)await audit(trx,actor,input.enabled?'plan.updated':'plan.paused',id);return row})
+  const row=await this.db.transaction().execute(async trx=>{const current=await trx.selectFrom('plans').selectAll().where('id','=',id).forUpdate().executeTakeFirst();if(current?.retention_enabled&&current.timezone!==input.timezone)throw new AppError('RETENTION_POLICY_ENABLED','Disable cleanup before changing the timezone used by its retention periods.',409);const row=await trx.updateTable('plans').set({name:input.name.trim(),cron,timezone:input.timezone,enabled:input.enabled,next_due:next}).where('id','=',id).returningAll().executeTakeFirst();if(row)await audit(trx,actor,input.enabled?'plan.updated':'plan.paused',id);return row})
   if(!row)throw new AppError('NOT_FOUND','Plan not found.',404)
-  return {...row,upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}
+  return {...retainedPlanDto(row),upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}
  }
  async runBackup(planId:string,key:string,actor='installation-owner'){
   validId(planId);requestKey(key)
@@ -274,8 +276,9 @@ export class Services {
  async prepareRestore(artifactId:string,targetId:string,actor='installation-owner'){
   validId(artifactId);validId(targetId)
   return this.db.transaction().execute(async trx=>{
-   const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',artifactId).executeTakeFirst()
+   const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',artifactId).forUpdate().executeTakeFirst()
    if(!artifact)throw new AppError('NOT_FOUND','Backup not found.',404)
+   if(artifact.deletion_state!=='active')throw new AppError('ARTIFACT_DELETION_RESERVED','This backup is reserved for cleanup or has been deleted. It cannot be reviewed for restore.',409)
    await lockConnections(trx,[artifact.source_id,artifact.storage_id,targetId])
    const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx),artifactId,targetId)
    const id=randomUUID()
@@ -295,7 +298,8 @@ export class Services {
    if(new Date(intent.expires_at)<=clock.rows[0].now)throw new AppError('RESTORE_REVIEW_EXPIRED','Prepare and review this restore again.',409)
    const reused=await trx.selectFrom('runs').select('id').where('idempotency_key','=',key).executeTakeFirst()
    if(reused)throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to another operation.',409)
-   const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',intent.artifact_id).executeTakeFirstOrThrow()
+   const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',intent.artifact_id).forUpdate().executeTakeFirstOrThrow()
+   if(artifact.deletion_state!=='active')throw new AppError('ARTIFACT_DELETION_RESERVED','This backup is reserved for cleanup or has been deleted. It cannot start a restore.',409)
    const connections=await lockConnections(trx,[artifact.source_id,artifact.storage_id,intent.target_id]),target=connections.get(intent.target_id)!
    const name=resourceKey(target)
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${name},2))`.execute(trx)
@@ -329,11 +333,14 @@ export class Services {
   validId(id)
   const artifact=await this.db.selectFrom('artifacts').selectAll().where('id','=',id).executeTakeFirst()
   if(!artifact)throw new AppError('NOT_FOUND','Backup not found.',404)
+  if(artifact.deletion_state!=='active')throw new AppError('ARTIFACT_DELETION_RESERVED','This backup is reserved for cleanup or has been deleted.',409)
   const storage=await this.connection(artifact.storage_id)
   // Preserve the database timestamp's full precision for concurrent probe ordering.
   const clock=await sql<{started_at:string}>`SELECT clock_timestamp()::text AS started_at`.execute(this.db),startedAt=clock.rows[0].started_at
   const observation=await this.probeArtifactObject(artifact,storage)
   return this.db.transaction().execute(async trx=>{
+   const currentArtifact=await trx.selectFrom('artifacts').select('deletion_state').where('id','=',id).forUpdate().executeTakeFirstOrThrow()
+   if(currentArtifact.deletion_state!=='active')throw new AppError('ARTIFACT_DELETION_RESERVED','Cleanup reserved this backup during its availability check.',409)
    const connections=await lockConnections(trx,[storage.id]),storageUnchanged=connections.get(storage.id)!.revision===storage.revision
    const updated=storageUnchanged?await trx.updateTable('artifacts').set({availability:observation.availability,checked_at:startedAt}).where('id','=',id).where(eb=>eb.or([eb('checked_at','is',null),eb('checked_at','<=',sql<Date>`${startedAt}::timestamptz`)])).returning(['availability','checked_at']).executeTakeFirst():undefined
    if(updated){await audit(trx,actor,'backup.availability.checked',id);return {id,...observation,checkedAt:updated.checked_at?new Date(updated.checked_at).toISOString():null,stale:false}}
@@ -345,7 +352,7 @@ export class Services {
   })
  }
  async artifacts(){
-  const rows=await this.db.selectFrom('artifacts').select(['id','run_id','source_id','storage_id','object_key','size','sha256','engine','server_version','tool_version','created_at','availability','checked_at']).orderBy('created_at','desc').limit(100).execute()
+  const rows=await this.db.selectFrom('artifacts').select(['id','run_id','source_id','storage_id','object_key','size','sha256','engine','server_version','tool_version','created_at','availability','checked_at','retention_locked','deletion_state','deleted_at']).orderBy('created_at','desc').limit(100).execute()
   return Promise.all(rows.map(async row=>({...row,last_restore:await this.db.selectFrom('runs').select(['status','validation','finished_at']).where('artifact_id','=',row.id).where('type','=','restore').orderBy('created_at','desc').executeTakeFirst()??null})))
  }
  async cancel(id:string,actor='installation-owner'){
@@ -363,8 +370,8 @@ export class Services {
   const [jobs,backups,plans,connections,activityRows,summary,storage]=await Promise.all([this.jobs(),this.artifacts(),this.plans(),this.connections(),
    sql<{date:string;backup:number;restore:number;failed:number}>`SELECT to_char(d.day,'YYYY-MM-DD') AS date, count(r.id) FILTER(WHERE r.type='backup')::integer AS backup,count(r.id) FILTER(WHERE r.type='restore')::integer AS restore,count(r.id) FILTER(WHERE r.status='failed')::integer AS failed FROM generate_series((now() AT TIME ZONE 'UTC')::date-13,(now() AT TIME ZONE 'UTC')::date,interval '1 day') d(day) LEFT JOIN runs r ON (r.created_at AT TIME ZONE 'UTC')::date=d.day::date GROUP BY d.day ORDER BY d.day`.execute(this.db),
    sql<{total:number;succeeded:number;failed:number;cancelled:number;interrupted:number;active:number}>`SELECT count(*)::integer AS total,count(*) FILTER(WHERE status='succeeded')::integer AS succeeded,count(*) FILTER(WHERE status='failed')::integer AS failed,count(*) FILTER(WHERE status='cancelled')::integer AS cancelled,count(*) FILTER(WHERE status='interrupted')::integer AS interrupted,count(*) FILTER(WHERE status IN ('queued','running','cancelling'))::integer AS active FROM runs WHERE created_at>=now()-interval '30 days'`.execute(this.db),
-   sql<{bytes:string;count:number}>`SELECT coalesce(sum(size),0)::text AS bytes,count(*)::integer AS count FROM artifacts`.execute(this.db)])
+   sql<{bytes:string;count:number}>`SELECT coalesce(sum(size),0)::text AS bytes,count(*)::integer AS count FROM artifacts WHERE deletion_state<>'deleted'`.execute(this.db)])
   const activity=activityRows.rows
-  return {jobs,backups,plans,connections,serverTime:new Date().toISOString(),activity,activityWindow:{from:activity[0]?.date??'',to:activity.at(-1)?.date??'',timezone:'UTC' as const},jobSummary:{...summary.rows[0],windowDays:30,scope:'all installation jobs'},storageSummary:{...storage.rows[0],scope:'all artifacts'}}
+  return {jobs,backups,plans,connections,serverTime:new Date().toISOString(),activity,activityWindow:{from:activity[0]?.date??'',to:activity.at(-1)?.date??'',timezone:'UTC' as const},jobSummary:{...summary.rows[0],windowDays:30,scope:'all installation jobs'},storageSummary:{...storage.rows[0],scope:'retained artifact records; pending deletion is unconfirmed'}}
  }
 }

@@ -4,7 +4,7 @@ import {Bot,Check,Copy,KeyRound,Plus,Shield,Terminal,Trash2} from 'lucide-react'
 import {api,ApiError,queryClient} from './state'
 import {Badge,date,Empty,Modal,Submit} from './ui'
 
-const permissions=[['read','Inspect installation'],['configure','Manage connections & plans'],['backup:run','Run backups'],['restore:run','Review & start restores'],['jobs:cancel','Cancel jobs'],['agents:manage','Manage agent access']] as const
+const permissions=[['read','Inspect installation'],['configure','Manage connections & plans'],['backup:run','Run backups'],['backup:delete','Manage retention & cleanup'],['restore:run','Review & start restores'],['jobs:cancel','Cancel jobs'],['agents:manage','Manage agent access']] as const
 type Scope=typeof permissions[number][0]
 type Agent={id:string;name:string;description:string;created_at:string;revoked_at:string|null}
 type Token={id:string;name:string;scopes:Scope[];expires_at:string;last_used_at:string|null;revoked_at:string|null}

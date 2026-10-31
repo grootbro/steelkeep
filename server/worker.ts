@@ -10,6 +10,7 @@ import {config} from './config'
 import {executeBackup,isRetryableBackupError} from './backup'
 import {executeRestore} from './restore'
 import {AppError,safeFailure} from './security'
+import {evaluateRetention,processRetentionJob,recoverRetentionClaims} from './retention-worker'
 
 const log=pino({name:'steelkeep-worker'}),{db,pool}=connectDb(),services=new Services(db)
 const boss=new PgBoss(config.databaseUrl())
@@ -23,8 +24,10 @@ let activeDone:Promise<void>|undefined,releaseActive:(()=>void)|undefined
 let dispatching=false
 const epoch=randomUUID()
 let dispatchTimer:ReturnType<typeof setInterval>|undefined
+let retentionTimer:ReturnType<typeof setInterval>|undefined,retentionDone:Promise<void>|undefined
+const retentionAbort=new AbortController()
 lock.on('error',()=>{
-  ownershipLost=true;active?.abort()
+  ownershipLost=true;active?.abort();retentionAbort.abort()
   log.error('Execution ownership connection lost; stopping native processes')
   void stop()
 })
@@ -38,6 +41,7 @@ await db.transaction().execute(async trx=>{
   // Claims hold a shared lock on this row. A new epoch waits for every old claim to commit,
   // then quarantines it; an old callback can never claim after this ownership transfer.
   await trx.insertInto('worker_state').values({singleton:true,epoch}).onConflict(c=>c.column('singleton').doUpdateSet({epoch,started_at:sql`now()`})).execute()
+  await recoverRetentionClaims(trx,epoch)
   const interrupted=await trx.updateTable('runs').set({status:'interrupted',phase:'interrupted',error_code:'WORKER_INTERRUPTED',error_message:'The previous worker stopped before confirming completion. Review the operation; restore targets remain reserved.',finished_at:sql`now()`}).where('status','in',['running','cancelling']).returning('id').execute()
   for(const run of interrupted)await trx.insertInto('events').values({run_id:run.id,phase:'interrupted',message:'Worker restart detected an unknown execution outcome. Automatic replay is blocked.'}).execute()
   const pending=await trx.selectFrom('runs').innerJoin('outbox','outbox.run_id','runs.id').select('runs.id').where('runs.status','=','queued').where('runs.cancel_requested','=',false).where('outbox.dispatched_at','is not',null).execute()
@@ -127,13 +131,18 @@ async function dispatch(){
 }
 await dispatch()
 dispatchTimer=setInterval(()=>void dispatch(),1000)
+function retentionTick(){
+  if(closing||ownershipLost||retentionDone)return
+  retentionDone=(async()=>{await evaluateRetention(db);if(!closing&&!ownershipLost)await processRetentionJob(db,epoch,retentionAbort.signal)})().catch(()=>log.error('Cleanup tick failed; durable reservations retained')).finally(()=>{retentionDone=undefined})
+}
+retentionTick();retentionTimer=setInterval(retentionTick,1000)
 log.info('Worker ready; one native operation per installation')
 
 function stop(){
   return stopping??=(async()=>{
-    closing=true;clearInterval(dispatchTimer);active?.abort()
+    closing=true;clearInterval(dispatchTimer);clearInterval(retentionTimer);active?.abort();retentionAbort.abort()
     // Native tool runner resolves only after the process group exits. Do not transfer ownership early.
-    await activeDone
+    await Promise.all([activeDone,retentionDone])
     await boss.stop({graceful:true,timeout:15000})
     if(!ownershipLost)await lock.query('SELECT pg_advisory_unlock(4356543)')
     lock.release();await db.destroy()

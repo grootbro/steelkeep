@@ -5,9 +5,9 @@ import type {Schema} from './db'
 import {config} from './config'
 import {AppError,tokenMatches} from './security'
 
-export const allScopes=['read','configure','backup:run','restore:run','jobs:cancel','agents:manage'] as const
+export const allScopes=['read','configure','backup:run','restore:run','jobs:cancel','agents:manage','backup:delete'] as const
 export type Scope=typeof allScopes[number]
-const legacyScopes:readonly Scope[]=allScopes.filter(scope=>scope!=='agents:manage')
+const legacyScopes:readonly Scope[]=allScopes.filter(scope=>scope!=='agents:manage'&&scope!=='backup:delete')
 export type Principal={actor:string;scopes:readonly Scope[];tokenId?:string;expiresAt?:Date;credentialKind?:"installation"|"legacy"|"agent"|"owner";credentialHash?:string;sessionId?:string;ownerId?:string;authVersion?:number}
 export function authorize(principal:Principal,scope:Scope){if(!principal.scopes.includes(scope))throw new AppError('FORBIDDEN','This token is not permitted to perform this operation.',403)}
 export const tokenHash=(token:string)=>createHash('sha256').update(token).digest('hex')
