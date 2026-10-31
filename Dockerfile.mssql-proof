@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+# Explicit Linux x64 SQL Server proof only. Do not build/download Microsoft
+# images or packages until the operator has accepted their applicable terms.
+# This image deliberately contains no PostgreSQL/MySQL/MongoDB CLI toolchains.
+ARG BUN_VERSION=1.4.0
+FROM oven/bun:${BUN_VERSION} AS dependencies
+ARG TARGETARCH
+WORKDIR /app
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+COPY package.json bun.lock ./
+RUN --mount=type=cache,id=steelkeep-mssql-proof-bun-${TARGETARCH},target=/root/.bun/install/cache,sharing=locked \
+    test "$TARGETARCH" = amd64 && bun install --frozen-lockfile
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS helper
+ARG TARGETARCH
+ARG STEELKEEP_MSSQL_ACCEPT_EULA
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+WORKDIR /source
+# Copy only source: host bin/obj outputs must not enter this helper build.
+COPY tools/Steelkeep.DacFx/Steelkeep.DacFx.csproj tools/Steelkeep.DacFx/Program.cs ./
+RUN test "$TARGETARCH" = amd64 && test "$STEELKEEP_MSSQL_ACCEPT_EULA" = Y \
+    && dotnet publish Steelkeep.DacFx.csproj --configuration Release --runtime linux-x64 --self-contained false --output /published \
+    && dotnet nuget locals all --clear \
+    && rm -rf bin obj
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS proof
+ARG TARGETARCH
+# The common native runner invokes prlimit even for the .NET helper.
+RUN test "$TARGETARCH" = amd64 \
+    && apt-get update && apt-get install -y --no-install-recommends util-linux \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb \
+    && mkdir -p /run/steelkeep && chmod 1777 /tmp
+WORKDIR /app
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    HOME=/tmp \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=UTC \
+    STEELKEEP_DACFX_HELPER=/opt/steelkeep-dacfx/Steelkeep.DacFx.dll
+COPY --from=dependencies /usr/local/bin/bun /usr/local/bin/bun
+# Keep frozen development dependencies for the official MCP acceptance client;
+# browser binaries, UI compilation and other database toolchains are omitted.
+COPY --from=dependencies /app/package.json /app/bun.lock ./
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=helper /published /opt/steelkeep-dacfx
+COPY server ./server
+COPY shared ./shared
+COPY scripts ./scripts
+COPY acceptance ./acceptance
+COPY THIRD-PARTY-NOTICES.md ./
+USER 10001:10001
+CMD ["bun", "server/worker.ts"]
