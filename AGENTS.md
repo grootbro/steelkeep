@@ -2,6 +2,7 @@
 
 Self-hosted backup and recovery product. TanStack Start + Elysia are user choices.
 Read docs/architecture.md and the kickoff in /Users/dobrota/dev/reports/stillkeep-research-20261031.
+The owner expanded the objective to a complete platform on 31 October. Read GOAL.md for the current agreed scope; AI-agent support and all eight engine profiles are required.
 
 ## Current user instructions (31 October 2026, take priority)
 

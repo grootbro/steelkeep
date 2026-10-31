@@ -35,4 +35,4 @@ Salt.md theme source was read as the second reference, for consistent active/hov
 
 ## Validation boundary
 
-Code and static source inspection only. Per user's current instruction, no browser, screenshot capture, service, build, lint, test, or typecheck was run for this redesign. Contrast, responsive layout, native-dialog focus behavior and endpoint integration remain unverified in a rendered application. This document records intended shipped tokens and composition, not visual acceptance.
+The initial redesign was code/static inspection only. The owner subsequently authorized local runtime review and isolated synthetic checks. Current auth, responsive layout, operational collections and forms have separate browser evidence recorded in docs/authentication.md and docs/acceptance.md; mocked rendering does not establish native backup/restore. Keep using the existing dev runtime rather than rebuilding Docker for UI work.

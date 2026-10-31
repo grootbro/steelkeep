@@ -20,7 +20,7 @@ Self-hosted UI, OpenAPI and native MCP share operations and history. AI agents a
 
 ## Capabilities and Constraints
 
-TanStack Start + Elysia are user choices. TanStack DB is explicitly desired. Durable jobs/schedules, safe secrets, separate empty restore target, cancellation and meaningful logs are mandatory. Full objective remains active. Runtime review is deferred by the user's current instruction; no browser/services/tests/build until requested.
+TanStack Start + Elysia are user choices. TanStack DB is explicitly desired. Durable jobs/schedules, safe secrets, separate empty restore target, cancellation and meaningful logs are mandatory. The owner expanded the active goal to a complete platform; GOAL.md is the current scope. Local runtime review and isolated synthetic checks are authorized. Use Vite/source mounts and avoid Docker builds for routine code or UI changes.
 
 ## Brand Commitments
 
@@ -32,4 +32,4 @@ Research and kickoff: /Users/dobrota/dev/reports/stillkeep-research-20261031. Da
 
 ## Product Principles
 
-Real operations over mock dashboards. Safe recovery by default. Shared UI/API/MCP semantics. Readable dense operational screens. Complete slices rather than a premature platform.
+Real operations over mock dashboards. Safe recovery by default. Shared UI/API/MCP semantics. Readable dense operational screens. Deliver the agreed platform through complete, verified slices.
