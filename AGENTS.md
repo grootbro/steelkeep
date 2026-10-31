@@ -18,3 +18,10 @@ Read docs/architecture.md and the kickoff in /Users/dobrota/dev/reports/stillkee
 - Tests must prove actual dump/upload/download/restore and fixture data through UI and MCP.
 - Keep history and safe error states. No secret in response, command argv or persisted log.
 - Implement finished slices; do not replace the requested product with a mocked dashboard.
+
+## Local resources
+
+- Use the existing Vite server and source-mounted API/worker for code, CSS and auth work. Do not rebuild Docker images for UI edits.
+- Build immutable images only for an explicit packaging checkpoint or changed native dependencies. Build one image at a time; inspect host free space first and never assume a warm cache.
+- After heavy acceptance, remove this checkout's obsolete images and build-history/cache records by verified identifiers. Keep one reusable worker image; never use global prune or remove database/artifact volumes.
+- A persistent package cache must live in a named BuildKit cache mount, not in every image layer. Cache mounts are not a disk quota; inspect and clean this project's unused cache after packaging.
