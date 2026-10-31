@@ -8,3 +8,8 @@ dist
 .playwright-cli
 output
 test-results
+
+.output
+playwright-report
+tools/**/bin
+tools/**/obj

@@ -20,6 +20,7 @@ RUN --mount=type=cache,id=steelkeep-bun-${TARGETARCH},target=/root/.bun/install/
 COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY shared ./shared
+COPY scripts/setup-owner.ts ./scripts/setup-owner.ts
 COPY THIRD-PARTY-NOTICES.md ./
 USER bun
 EXPOSE 4310

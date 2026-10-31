@@ -112,3 +112,26 @@ semantics independently of Steelkeep's own manifest. Include worker death, netwo
 loss after submit, duplicate request keys, source/target aliases, restricted-role
 failures and missing tooling. A tool exit code, S3 HEAD or schema checksum alone
 does not establish recovered application data.
+
+## Self-hosted file mounts
+
+`compose.selfhost.yaml` forwards the SQLite and ClickHouse root variables to the API and worker. Variables alone do not mount files. Create private host directories owned by the configured service UID, then use an explicit override such as:
+
+```yaml
+# compose.files.yaml
+services:
+  web:
+    volumes:
+      - /srv/steelkeep/sqlite/source:/steelkeep/sqlite/source:ro
+      - /srv/steelkeep/sqlite/target:/steelkeep/sqlite/target
+      - /srv/steelkeep/clickhouse:/steelkeep/clickhouse
+  worker:
+    volumes:
+      - /srv/steelkeep/sqlite/source:/steelkeep/sqlite/source:ro
+      - /srv/steelkeep/sqlite/target:/steelkeep/sqlite/target
+      - /srv/steelkeep/clickhouse:/steelkeep/clickhouse
+```
+
+Set `.env` roots to `/steelkeep/sqlite/source`, `/steelkeep/sqlite/target` and `/steelkeep/clickhouse` respectively, then include `-f compose.files.yaml` in Compose commands. Both API and worker need the same canonical paths: connection admission and restore reviews inspect files in the API; native writes happen in the worker. Sources and targets must be separate existing initialized SQLite files. ClickHouse must also mount the same shared directory at the same path and configure it as an allowed backup disk; an arbitrary remote server directory cannot be accessed through HTTP alone. Do not mount the host filesystem root.
+
+For the optional MSSQL extension, the worker runtime UID must have an OS account entry. `Dockerfile.mssql` registers UID/GID10001; an arbitrary host UID copied by setup can fail SqlClient username resolution. Set `STEELKEEP_UID=10001` and `STEELKEEP_GID=10001` for the application containers and make the private `.steelkeep` directory/files readable by that service owner without making them public. Preserve directory0700/file0600; an operator with host privileges can change ownership. Alternatively provision an explicit matching NSS entry for a different service UID. The installation key, metadata password and encryption key must remain available to web, migration and worker.

@@ -9,10 +9,7 @@ the previous jade/muddy green direction is rejected. Cool neutral/slate surfaces
 type and dense operational rows; blue/violet accents. Salt.md supplies secondary UX ideas.
 The user's permission includes licensed interface-code adaptation; preserve provenance.
 
-On 31 October the owner requested a working local preview and authorized local install,
-build/typecheck/tests and isolated fixture services. That review phase is now active.
-Only synthetic local services are in scope; production, deployment, publication and paid
-services remain outside it. The current preview is [127.0.0.1:4310](http://127.0.0.1:4310).
+Current execution policy: the owner's Mac Docker and application remain stopped. All installs, builds, typechecks, browsers and tests run on isolated server stands. An owner-authorized persistent HTTPS installation is now available separately from those stands. Existing historical local results below are evidence from the earlier phase, not instructions to restart local execution. Actual user database targets require the owner's selection; paid services and public repository publication need separate authorization.
 
 Root integrates subagents with disjoint boundaries: src/design, native engines/restore,
 application API/MCP/schema/scheduler; root owns worker/deployment/docs and final contracts.
