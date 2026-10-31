@@ -15,6 +15,7 @@ import {probeArtifactAvailability,availabilityStates,type Availability} from './
 import {AgentServices,audit} from './agents'
 import {authenticateRequest} from './auth'
 import {RetentionServices,retainedPlanDto} from './retention'
+import {NotificationServices} from './notifications'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
 
 export {engineProfiles} from '../shared/engines'
@@ -89,7 +90,8 @@ function validateConnectionUpdate(input:ConnectionUpdateInput){
 export class Services {
  readonly agents:AgentServices
  readonly retention:RetentionServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db)}
+ readonly notifications:NotificationServices
+ constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db)}
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
   .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])

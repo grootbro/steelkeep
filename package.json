@@ -16,7 +16,7 @@
     "seed:fixture": "bun scripts/seed-fixture.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:acceptance": "tsc --noEmit --project tsconfig.acceptance.json",
-    "test": "bun test tests/security.test.ts tests/resources.test.ts tests/pending-backups.test.ts tests/pending-restores.test.ts tests/retention-requests.test.ts tests/retention.test.ts tests/manifest.test.ts tests/mongodb-lock-state.test.ts tests/sql-grants.test.ts tests/storage-errors.test.ts tests/owner-auth.test.ts tests/setup-owner.test.ts tests/auth-destination.test.ts",
+    "test": "bun test tests/security.test.ts tests/resources.test.ts tests/pending-backups.test.ts tests/pending-restores.test.ts tests/history.test.ts tests/history-dates.test.ts tests/mssql-helper.test.ts tests/mssql-continuation.test.ts tests/notification-requests.test.ts tests/retention-requests.test.ts tests/retention.test.ts tests/notifications.test.ts tests/manifest.test.ts tests/mongodb-lock-state.test.ts tests/sql-grants.test.ts tests/storage-errors.test.ts tests/owner-auth.test.ts tests/setup-owner.test.ts tests/auth-destination.test.ts",
     "test:integration": "STEELKEEP_ACCEPTANCE=synthetic-local bun test tests/api.integration.test.ts tests/connections.integration.test.ts tests/artifact-availability.integration.test.ts",
     "infra:up": "docker compose up -d --wait",
     "db:migrate": "bun server/migrate.ts"
@@ -41,6 +41,7 @@
     "mysql2": "3.24.6",
     "mongodb": "7.8.0",
     "mssql": "12.7.13",
+    "nodemailer": "10.3.1",
     "pg": "8.23.1",
     "pg-boss": "12.38.0",
     "pino": "10.3.1",

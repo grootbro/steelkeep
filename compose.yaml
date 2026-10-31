@@ -21,6 +21,7 @@ services:
       - ./.steelkeep:/run/steelkeep:ro
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro
+      - ./node_modules/nodemailer:/app/node_modules/nodemailer:ro
     depends_on:
       metadata: {condition: service_healthy}
   worker:
@@ -33,6 +34,7 @@ services:
       - ./.steelkeep:/run/steelkeep:ro
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro
+      - ./node_modules/nodemailer:/app/node_modules/nodemailer:ro
     depends_on:
       metadata: {condition: service_healthy}
       fixture: {condition: service_healthy}

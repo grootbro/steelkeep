@@ -11,6 +11,8 @@ using Microsoft.SqlServer.Dac;
 Console.SetError(TextWriter.Null);
 var protocolOutput = Console.Out;
 Console.SetOut(TextWriter.Null);
+var stage = "request";
+Database? db = null;
 try {
     if (!OperatingSystem.IsLinux() || System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture != System.Runtime.InteropServices.Architecture.X64) throw new InvalidOperationException();
     var input = new StringBuilder();
@@ -19,6 +21,7 @@ try {
     while ((n = await Console.In.ReadAsync(chars)) > 0) { input.Append(chars, 0, n); if (input.Length > 128 * 1024) throw new InvalidOperationException(); }
     var request = JsonSerializer.Deserialize<Request>(input.ToString(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidOperationException();
     if (request.Port is < 1 or > 65535 || request.Database.Length == 0 || new[] { "master", "model", "msdb", "tempdb", "steelkeep" }.Contains(request.Database.ToLowerInvariant())) throw new InvalidOperationException();
+    stage = "connection";
     var builder = new SqlConnectionStringBuilder {
         DataSource = $"tcp:{request.Host},{request.Port}", InitialCatalog = request.Database,
         UserID = request.User, Password = request.Password, ConnectTimeout = 10,
@@ -29,14 +32,17 @@ try {
     using var deadline = new CancellationTokenSource(TimeSpan.FromHours(2));
     using var connection = new SqlConnection(builder.ConnectionString);
     await connection.OpenAsync(deadline.Token);
-    var db = new Database(connection, deadline.Token);
+    db = new Database(connection, deadline.Token);
+    stage = "identity";
     var identity = await db.Identity(request.Database);
+    stage = "catalog";
     var empty = await db.Empty();
     var restricted = request.RestoreTarget && await db.Restricted();
     object? manifest = null;
-    if (request.Mode == "manifest") { if (!request.RestoreTarget) await db.ReadOnlySource(); manifest = await db.Manifest(identity); }
+    if (request.Mode == "manifest") { stage = "manifest"; if (!request.RestoreTarget) await db.ReadOnlySource(); manifest = await db.Manifest(identity); }
     else if (request.Mode is "export" or "import") {
         if (string.IsNullOrEmpty(request.File) || !Path.IsPathFullyQualified(request.File)) throw new InvalidOperationException();
+        stage = request.Mode;
         var service = new DacServices(builder.ConnectionString);
         if (request.Mode == "export") {
             if (request.RestoreTarget || File.Exists(request.File)) throw new InvalidOperationException();
@@ -57,12 +63,16 @@ try {
             }, deadline.Token);
         }
     } else if (request.Mode != "inspect") throw new InvalidOperationException();
+    stage = "runtime";
     var actualVersion = FileVersionInfo.GetVersionInfo(typeof(DacServices).Assembly.Location).FileVersion;
     if (string.IsNullOrWhiteSpace(actualVersion) || !actualVersion.StartsWith("170.", StringComparison.Ordinal)) throw new InvalidOperationException();
     var result = JsonSerializer.Serialize(new { identity, empty, restricted, manifest, toolVersion = "DacFx " + actualVersion, packageVersion = "170.5.96" });
     if (Encoding.UTF8.GetByteCount(result) > 2 * 1024 * 1024) throw new InvalidOperationException();
     await protocolOutput.WriteAsync(result);
-} catch { Environment.ExitCode = 1; }
+} catch {
+    // A handled protocol failure stays machine-readable; no exception or driver text leaves the helper.
+    await protocolOutput.WriteAsync(JsonSerializer.Serialize(new { error = new { code = "MSSQL_HELPER_FAILED", stage = stage == "manifest" ? db?.ManifestStage ?? stage : stage } }));
+}
 
 sealed record Request {
     public string Mode { get; init; } = "";
@@ -78,9 +88,22 @@ sealed record Request {
 sealed record Identity(string engine, string database, string serverVersion, string binding);
 
 sealed class Database(SqlConnection connection, CancellationToken cancellation) {
+    public string ManifestStage { get; private set; } = "manifest";
     private SqlCommand Command(string sql) => new(sql, connection) { CommandTimeout = 120 };
     private async Task<int> Number(string sql) { using var command = Command(sql); return Convert.ToInt32(await command.ExecuteScalarAsync(cancellation)); }
-    private async Task<string> Text(string sql) { using var command = Command(sql); return Convert.ToString(await command.ExecuteScalarAsync(cancellation)) ?? ""; }
+    private async Task<string> Text(string sql) {
+        using var command = Command(sql);
+        using var reader = await command.ExecuteReaderAsync(cancellation);
+        if (reader.FieldCount != 1) throw new InvalidOperationException();
+        var text = new StringBuilder();
+        // FOR JSON returns large catalog documents in multiple rows.
+        while (await reader.ReadAsync(cancellation)) {
+            var part = await reader.IsDBNullAsync(0, cancellation) ? "" : reader.GetString(0);
+            if (text.Length + part.Length > 2 * 1024 * 1024) throw new InvalidOperationException();
+            text.Append(part);
+        }
+        return text.ToString();
+    }
     private static string Quote(string name) => "[" + name.Replace("]", "]]") + "]";
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     public async Task<Identity> Identity(string expected) {
@@ -90,19 +113,23 @@ sealed class Database(SqlConnection connection, CancellationToken cancellation) 
     public async Task ReadOnlySource() {
         if (await Number("SELECT is_read_only FROM sys.databases WHERE database_id=DB_ID()") != 1) throw new InvalidOperationException();
     }
-    private const string ExtraObjects = "SELECT (SELECT COUNT(*) FROM sys.database_scoped_credentials)+(SELECT COUNT(*) FROM sys.external_data_sources)+(SELECT COUNT(*) FROM sys.external_file_formats)+(SELECT COUNT(*) FROM sys.assemblies WHERE is_user_defined=1)+(SELECT COUNT(*) FROM sys.security_policies)+(SELECT COUNT(*) FROM sys.partition_functions)+(SELECT COUNT(*) FROM sys.certificates)+(SELECT COUNT(*) FROM sys.symmetric_keys)+(SELECT COUNT(*) FROM sys.asymmetric_keys)+(SELECT COUNT(*) FROM sys.external_libraries)+(SELECT COUNT(*) FROM sys.external_languages)+(SELECT COUNT(*) FROM sys.xml_schema_collections WHERE xml_collection_id>0 AND schema_id<>4)";
+    // R/Python are reserved built-in languages, including in otherwise empty SQL Server 2022 databases.
+    private const string ExtraObjects = "SELECT (SELECT COUNT(*) FROM sys.database_scoped_credentials)+(SELECT COUNT(*) FROM sys.external_data_sources)+(SELECT COUNT(*) FROM sys.external_file_formats)+(SELECT COUNT(*) FROM sys.assemblies WHERE is_user_defined=1)+(SELECT COUNT(*) FROM sys.security_policies)+(SELECT COUNT(*) FROM sys.partition_functions)+(SELECT COUNT(*) FROM sys.certificates)+(SELECT COUNT(*) FROM sys.symmetric_keys)+(SELECT COUNT(*) FROM sys.asymmetric_keys)+(SELECT COUNT(*) FROM sys.external_libraries)+(SELECT COUNT(*) FROM sys.external_languages WHERE language NOT IN (N'R',N'Python'))+(SELECT COUNT(*) FROM sys.xml_schema_collections WHERE xml_collection_id>0 AND schema_id<>4)";
     public async Task<bool> Empty() => await Number("SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped=0") == 0 && await Number("SELECT COUNT(*) FROM sys.schemas WHERE schema_id>4 AND schema_id<16384") == 0 && await Number("SELECT COUNT(*) FROM sys.types WHERE is_user_defined=1") == 0 && await Number(ExtraObjects) == 0;
     public async Task<bool> Restricted() {
         if (await Number("SELECT CASE WHEN IS_ROLEMEMBER('db_owner')=1 AND HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DEFINITION')=1 THEN 1 ELSE 0 END") != 1) return false;
         return await Number("SELECT COUNT(*) FROM sys.fn_my_permissions(NULL,'SERVER') WHERE permission_name NOT IN ('CONNECT SQL','VIEW ANY DATABASE')") == 0;
     }
     public async Task<object> Manifest(Identity identity) {
+        ManifestStage = "manifest_permissions";
         if (await Number("SELECT CASE WHEN HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DEFINITION')=1 THEN 0 ELSE 1 END") != 0) throw new InvalidOperationException();
+        ManifestStage = "manifest_features";
         // This application-data profile rejects features without an independent portable validator.
         if (await Number("SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped=0 AND type NOT IN ('U','PK','UQ','F','C','D','SO')") != 0 ||
             await Number("SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0 AND (is_memory_optimized=1 OR temporal_type<>0 OR is_filetable=1 OR is_tracked_by_cdc=1 OR is_replicated=1)") != 0 ||
-            await Number("SELECT COUNT(*) FROM sys.columns WHERE is_filestream=1 OR is_sparse=1 OR is_column_set=1 OR encryption_type IS NOT NULL OR generated_always_type<>0 OR is_hidden=1 OR is_computed=1") != 0 ||
+            await Number("SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON t.object_id=c.object_id WHERE t.is_ms_shipped=0 AND (c.is_filestream=1 OR c.is_sparse=1 OR c.is_column_set=1 OR c.encryption_type IS NOT NULL OR c.generated_always_type<>0 OR c.is_hidden=1 OR c.is_computed=1)") != 0 ||
             await Number("SELECT COUNT(*) FROM sys.fulltext_indexes") != 0 || await Number("SELECT COUNT(*) FROM sys.external_tables") != 0 || await Number("SELECT COUNT(*) FROM sys.types WHERE is_user_defined=1") != 0 || await Number(ExtraObjects) != 0) throw new InvalidOperationException();
+        ManifestStage = "manifest_tables";
         var tables = new List<(int Id, string Schema, string Name)>();
         using (var command = Command("SELECT t.object_id,s.name,t.name FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.is_ms_shipped=0 ORDER BY s.name,t.name"))
         using (var reader = await command.ExecuteReaderAsync(cancellation)) {
@@ -113,6 +140,7 @@ sealed class Database(SqlConnection connection, CancellationToken cancellation) 
         var sequences = new SortedDictionary<string,object>(StringComparer.Ordinal);
         long totalBytes = 0, totalRows = 0;
         foreach (var table in tables) {
+            ManifestStage = "manifest_columns";
             var columns = new List<string>();
             using (var command = Command($"SELECT c.name,ty.name FROM sys.columns c JOIN sys.types ty ON ty.user_type_id=c.user_type_id WHERE c.object_id={table.Id} ORDER BY c.column_id"))
             using (var reader = await command.ExecuteReaderAsync(cancellation)) {
@@ -122,12 +150,14 @@ sealed class Database(SqlConnection connection, CancellationToken cancellation) 
                 }
             }
             var name = table.Schema + "." + table.Name;
+            ManifestStage = "manifest_schema";
             // Catalog JSON uses names/ordinals, never instance-specific object IDs.
             var schema = await Text($"SELECT c.name,ty.name AS type,c.max_length,c.precision,c.scale,c.is_nullable,c.collation_name,c.is_identity,dc.definition FROM sys.columns c JOIN sys.types ty ON ty.user_type_id=c.user_type_id LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id WHERE c.object_id={table.Id} ORDER BY c.column_id FOR JSON PATH,INCLUDE_NULL_VALUES");
             var indexes = await Text($"SELECT i.name,i.type_desc,i.is_unique,i.is_primary_key,i.is_unique_constraint,i.has_filter,i.filter_definition,(SELECT c.name,ic.key_ordinal,ic.is_descending_key,ic.is_included_column FROM sys.index_columns ic JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE ic.object_id=i.object_id AND ic.index_id=i.index_id ORDER BY ic.index_column_id FOR JSON PATH) AS cols FROM sys.indexes i WHERE i.object_id={table.Id} AND i.index_id>0 ORDER BY i.name FOR JSON PATH,INCLUDE_NULL_VALUES");
             var checks = await Text($"SELECT name,definition,is_disabled,is_not_trusted FROM sys.check_constraints WHERE parent_object_id={table.Id} ORDER BY name FOR JSON PATH,INCLUDE_NULL_VALUES");
             var foreign = await Text($"SELECT f.name,OBJECT_SCHEMA_NAME(f.referenced_object_id) AS target_schema,OBJECT_NAME(f.referenced_object_id) AS target_table,f.delete_referential_action,f.update_referential_action,f.is_disabled,f.is_not_trusted,(SELECT COL_NAME(fc.parent_object_id,fc.parent_column_id) AS col,COL_NAME(fc.referenced_object_id,fc.referenced_column_id) AS target_col FROM sys.foreign_key_columns fc WHERE fc.constraint_object_id=f.object_id ORDER BY fc.constraint_column_id FOR JSON PATH) AS cols FROM sys.foreign_keys f WHERE f.parent_object_id={table.Id} ORDER BY f.name FOR JSON PATH,INCLUDE_NULL_VALUES");
             objects[name] = Hash(schema + "\n" + indexes + "\n" + checks + "\n" + foreign);
+            ManifestStage = "manifest_data";
             long count = 0; BigInteger sum = BigInteger.Zero, xor = BigInteger.Zero;
             using (var command = Command("SELECT " + string.Join(",", columns.Select(column => "CONVERT(varbinary(max)," + Quote(column) + ")")) + " FROM " + Quote(table.Schema) + "." + Quote(table.Name)))
             using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellation)) {
@@ -148,9 +178,12 @@ sealed class Database(SqlConnection connection, CancellationToken cancellation) 
                 }
             }
             data[name] = new { count = count.ToString(), sum = sum.ToString("x"), xor = xor.ToString("x") };
+            ManifestStage = "manifest_sequences";
             sequences[name] = await Text($"SELECT name,CONVERT(nvarchar(100),seed_value) AS seed,CONVERT(nvarchar(100),increment_value) AS increment,CONVERT(nvarchar(100),last_value) AS last FROM sys.identity_columns WHERE object_id={table.Id} ORDER BY name FOR JSON PATH,INCLUDE_NULL_VALUES");
         }
+        ManifestStage = "manifest_sequences";
         sequences["$sequences"] = await Text("SELECT SCHEMA_NAME(schema_id) AS schema_name,name,CONVERT(nvarchar(100),start_value) AS start,CONVERT(nvarchar(100),increment) AS increment,CONVERT(nvarchar(100),minimum_value) AS min,CONVERT(nvarchar(100),maximum_value) AS max,is_cycling,CONVERT(nvarchar(100),current_value) AS current_value FROM sys.sequences ORDER BY SCHEMA_NAME(schema_id),name FOR JSON PATH,INCLUDE_NULL_VALUES");
+        ManifestStage = "manifest_schema";
         objects["$database"] = Hash(await Text("SELECT collation_name,compatibility_level FROM sys.databases WHERE database_id=DB_ID() FOR JSON PATH"));
         return new { format = 1, identity.engine, identity.database, identity.serverVersion, objects, data, sequences };
     }

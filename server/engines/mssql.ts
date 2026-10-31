@@ -8,6 +8,38 @@ import {assertArchiveSize,maxArchiveBytes,runTool,toolEnv} from '../process'
 
 type Inspection={identity:Identity;empty:boolean;restricted:boolean;manifest?:Manifest;toolVersion:string;packageVersion?:string}
 
+const helperFailures={
+  request:'The SQL Server helper refused its input or execution platform.',
+  connection:'The SQL Server helper could not establish its database session.',
+  identity:'The SQL Server helper could not verify the selected database identity.',
+  catalog:'The SQL Server helper could not inspect the database catalog.',
+  manifest:'The SQL Server source or target does not satisfy the portable validation profile.',
+  manifest_permissions:'The SQL Server validation could not verify database permissions.',
+  manifest_features:'The SQL Server validation could not verify portable database features.',
+  manifest_tables:'The SQL Server validation could not verify the user-table catalog.',
+  manifest_columns:'The SQL Server validation could not verify portable column types.',
+  manifest_schema:'The SQL Server validation could not verify the complete schema catalog.',
+  manifest_data:'The SQL Server validation could not verify the complete row digest.',
+  manifest_sequences:'The SQL Server validation could not verify identity and sequence values.',
+
+  export:'The SQL Server BACPAC export failed; no successful archive is implied.',
+  import:'The SQL Server BACPAC import failed; its target remains protected until reviewed.',
+  runtime:'The SQL Server helper could not verify its pinned DacFx runtime.'
+} as const
+
+export function parseMssqlHelperResponse(output:string,database:string):Inspection {
+  let result:Inspection&{error?:{code?:unknown;stage?:unknown}}
+  try{result=JSON.parse(output)}catch{throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid result.')}
+  if(!result||typeof result!=='object')throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid result.')
+  if(result.error?.code==='MSSQL_HELPER_FAILED'&&typeof result.error.stage==='string'&&Object.hasOwn(helperFailures,result.error.stage)){
+    const stage=result.error.stage as keyof typeof helperFailures
+    throw new AppError('MSSQL_HELPER_'+stage.toUpperCase(),helperFailures[stage])
+  }
+  if(result.error)throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid failure result.')
+  if(result.identity?.engine!=='mssql'||result.identity.database!==database||typeof result.empty!=='boolean'||typeof result.restricted!=='boolean'||result.packageVersion!=='170.5.96'||typeof result.toolVersion!=='string'||!/^DacFx 170\.[0-9.]+$/.test(result.toolVersion))throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper identity or actual runtime version could not be verified.')
+  return result
+}
+
 /** Optional x64 DacFx profile. BACPAC portability is distinct from native SQL Server disaster recovery. */
 export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
   const {config,secret}=options
@@ -31,7 +63,7 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
     if(signal.aborted)throw new AppError('CANCELLED','Operation cancelled.')
     const result=await pool.request().query<{database:string;serverVersion:string;major:number;serverName:string;empty:number;restricted:number}>(`SELECT DB_NAME() AS [database],CONVERT(nvarchar(128),SERVERPROPERTY('ProductVersion')) AS serverVersion,CONVERT(int,SERVERPROPERTY('ProductMajorVersion')) AS major,CONVERT(nvarchar(128),SERVERPROPERTY('ServerName')) AS serverName,
       CASE WHEN NOT EXISTS(SELECT 1 FROM sys.objects WHERE is_ms_shipped=0) AND NOT EXISTS(SELECT 1 FROM sys.schemas WHERE schema_id>4 AND schema_id<16384) AND NOT EXISTS(SELECT 1 FROM sys.types WHERE is_user_defined=1)
-      AND NOT EXISTS(SELECT 1 FROM sys.database_scoped_credentials) AND NOT EXISTS(SELECT 1 FROM sys.external_data_sources) AND NOT EXISTS(SELECT 1 FROM sys.external_file_formats) AND NOT EXISTS(SELECT 1 FROM sys.assemblies WHERE is_user_defined=1) AND NOT EXISTS(SELECT 1 FROM sys.security_policies) AND NOT EXISTS(SELECT 1 FROM sys.partition_functions) AND NOT EXISTS(SELECT 1 FROM sys.certificates) AND NOT EXISTS(SELECT 1 FROM sys.symmetric_keys) AND NOT EXISTS(SELECT 1 FROM sys.asymmetric_keys) AND NOT EXISTS(SELECT 1 FROM sys.external_libraries) AND NOT EXISTS(SELECT 1 FROM sys.external_languages) AND NOT EXISTS(SELECT 1 FROM sys.xml_schema_collections WHERE xml_collection_id>0 AND schema_id<>4) THEN 1 ELSE 0 END AS empty,
+      AND NOT EXISTS(SELECT 1 FROM sys.database_scoped_credentials) AND NOT EXISTS(SELECT 1 FROM sys.external_data_sources) AND NOT EXISTS(SELECT 1 FROM sys.external_file_formats) AND NOT EXISTS(SELECT 1 FROM sys.assemblies WHERE is_user_defined=1) AND NOT EXISTS(SELECT 1 FROM sys.security_policies) AND NOT EXISTS(SELECT 1 FROM sys.partition_functions) AND NOT EXISTS(SELECT 1 FROM sys.certificates) AND NOT EXISTS(SELECT 1 FROM sys.symmetric_keys) AND NOT EXISTS(SELECT 1 FROM sys.asymmetric_keys) AND NOT EXISTS(SELECT 1 FROM sys.external_libraries) AND NOT EXISTS(SELECT 1 FROM sys.external_languages WHERE language NOT IN (N'R',N'Python')) AND NOT EXISTS(SELECT 1 FROM sys.xml_schema_collections WHERE xml_collection_id>0 AND schema_id<>4) THEN 1 ELSE 0 END AS empty,
       CASE WHEN IS_ROLEMEMBER('db_owner')=1 AND HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DEFINITION')=1 AND NOT EXISTS(SELECT 1 FROM sys.fn_my_permissions(NULL,'SERVER') WHERE permission_name NOT IN ('CONNECT SQL','VIEW ANY DATABASE')) THEN 1 ELSE 0 END AS restricted`)
     const row=result.recordset[0]
     if(!row||row.database!==database||![15,16].includes(row.major))throw new AppError('UNSUPPORTED_VERSION','This SQL Server profile requires a verified SQL Server 2019 or 2022 database identity.')
@@ -47,9 +79,7 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
     try{
       await writeFile(request,JSON.stringify({mode,host:config.host,port:config.port,database,user:config.user,password:secret.password,tls:config.tls===true,restoreTarget:config.restoreTarget===true,file}),{mode:0o600,flag:'wx'})
       const output=await runTool('dotnet',[helper],{signal,env:toolEnv({DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_CLI_HOME:dir,DOTNET_NOLOGO:'1',DOTNET_EnableDiagnostics:'0'}),stdinFile:request,capture:true,captureLimitBytes:2*1024*1024,timeoutMs:mode==='inspect'?60000:2*60*60*1000})
-      let result:Inspection
-      try{result=JSON.parse(output)}catch{throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid result.')}
-      if(result.identity?.engine!=='mssql'||result.identity.database!==database||typeof result.empty!=='boolean'||typeof result.restricted!=='boolean'||result.packageVersion!=='170.5.96'||!/^DacFx 170\.[0-9.]+/.test(result.toolVersion))throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper identity or actual runtime version could not be verified.')
+      const result=parseMssqlHelperResponse(output,database)
       toolVersion=result.toolVersion
       return result
     }finally{await rm(dir,{recursive:true,force:true})}

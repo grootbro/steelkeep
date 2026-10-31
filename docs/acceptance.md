@@ -31,8 +31,9 @@ The primary executor then observed these passing current runs:
 - Unit suite:26 tests / 154 assertions.
 
 Together with the recorded MongoDB/Redis/SQLite runs, seven ordinary native profiles now
-have recovery evidence. SQL Server remains unrun: its helper compiles, but supported
-nonproduction physical x64 Linux execution and operator EULA acceptance are still needed.
+have recovery evidence. SQL Server subsequently ran on the separately authorized A-server x64 stand with EULA
+acceptance: BACPAC export and independent stored-byte SHA passed, but import failed and
+remains interrupted/protected. Full SQL Server recovery is not qualified.
 The corrected transient-S3 retry acceptance passed 1 test / 21 assertions in 14.70s:
 only its own RustFS container was stopped and restarted with the same container ID.
 The actual PostgreSQL job recorded attempt 1 STORAGE_UNAVAILABLE/retry_wait with no
@@ -178,7 +179,7 @@ assertions alone were not counted as execution.
 | SQLite | Online/WAL snapshot, implicit rowids, identity/FK checks, path/symlink/hardlink guards | Linux-writer live-WAL MCP recovery, rowids, identity/FK and hard-link refusal passed; broader fault/path matrix pending |
 | Redis | Atomic DUMP capture, binary keys/types/streams, absolute TTL including expiry; no FLUSH/REPLACE | 7.4.12 native MCP recovery passed including binary keys/types and exact expiry; Redis8/fault matrix pending |
 | ClickHouse | Native disk archive, shared spool, ASYNC reconciliation and independent data checks | ClickHouse 25.8.12 native MCP passed 1 test / 20 assertions; native uncertainty/fault/UI matrix pending |
-| SQL Server | Supported physical Linux x64 helper, read-only source BACPAC, empty target import and independent validation | Helper compiled with patched Pkcs; supported x64 runtime/package/permission/recovery proof pending |
+| SQL Server | Supported physical Linux x64 helper, read-only source BACPAC, empty target import and independent validation | SQL Server 2022 CU23 / .NET 10.0.14 / DacFx 170.5.96: read-only manifest and native export/S3 GET/SHA passed; import interrupted/MSSQL_HELPER_IMPORT, target reserved; recovery unqualified |
 | AI-agent access | Scope denial, expiry, delegation/revocation, audit, UI and MCP management | Targeted metadata/API/MCP tests and real browser issuance/scope/revocation workflow passed; broader delegation/expiry cases pending |
 | Durable jobs | Kill/restart on dump/upload/commit boundaries; no lost job, false success or restore replay | Ordinary jobs, selected dump/restore cancellation/SIGKILL/restart quarantine and permanent S3 refusals passed; actual storage retry passed; full boundary/partial-write matrix pending |
 | Schedules | Timezone/DST/missed/overlap and unique occurrence under concurrency | Relevant unit/integration cases passed; real scheduled native execution pending |
@@ -276,3 +277,12 @@ Unit group:38tests/297assertions. Application/acceptance TypeScript passed. No n
 Migration 8 and the mounted days/GFS policy editor, preview, explicit enablement, scoped cleanup, history/retry and snapshot locks are integrated locally. Dedicated metadata/new-bucket retention proof passed 1 / 68 assertions; three owned conditional deletes reached HEAD 404, four protected objects remained, and changed objects stayed held until explicit same-key retry. Metadata fencing and transient backoff were tested separately; versioned S3 and process-kill boundaries remain unqualified. [Operational limits and exact evidence](retention.md). Main integration retained 20 keep-all/disabled plans, 28 active artifact records and zero cleanup jobs; API/worker were restarted from source mounts without a Docker build.
 
 Restore commands now persist only actor-scoped identifiers before submission. Explicit recovery survives dialog close/reload, returns the same interrupted job and retains keys through authentication/rate/proxy refusals. Reload never replays a command. The intercepted actual-workspace test `acceptance/restore-bookmark-ui.test.ts` passed 1 / 13 assertions; storage tests passed 3 / 9. This is UI command-recovery evidence, separate from native restore execution.
+
+
+## Notifications and complete history · 31 October 2026
+
+Schema 9 is integrated in the main source-mounted runtime without an image build or pull. All 20 plans remain keep-all with cleanup disabled, all 28 artifacts active; zero notification channels or deliveries. A private 167,432-byte metadata snapshot was retained before migration. The existing Linux runtime loads the exact small pure-JS SMTP dependency from a read-only development mount.
+
+Notification backend agent proof: dedicated schema-9 PostgreSQL, 11 actual loopback HTTP and 3 SMTP sends, 1 test / 94 assertions; no external providers. Stalled SMTP cancellation was additionally qualified against a real socket. UI CRUD/CAS/secret/retry/attempt-history checks were intercepted and remain separate from actual delivery proof. Real provider accounts/SMTP TLS remain unqualified; channels are global. See [notifications](notifications.md).
+
+Root full-history proof: 1 test / 166 assertions with 107 records, exact timestamp ties, filtered cursor pagination, old-artifact validation, real Elysia routes and official scoped MCP read tools. Dedicated database and temporary keys removed. Intercepted actual-workspace UI test / 8 assertions validates paging/filter reset/local DST date boundaries/mobile/held older snapshot refusal. See [history](history.md). Default unit group: 69 tests / 520 assertions, both TypeScript configurations passed at this checkpoint.

@@ -93,6 +93,30 @@ try {
       await sql`CREATE TABLE retention_requests(key text PRIMARY KEY,actor text NOT NULL,plan_id uuid NOT NULL REFERENCES plans,job_id uuid REFERENCES retention_jobs,kind text NOT NULL,revision integer NOT NULL,response jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(8)`.execute(trx)
     }
+    if(!versions.has(9)){
+      await sql`CREATE TABLE notification_channels(id uuid PRIMARY KEY,name text NOT NULL,kind text NOT NULL,enabled boolean NOT NULL,revision integer NOT NULL DEFAULT 1,events jsonb NOT NULL,config jsonb NOT NULL,secret text NOT NULL,deleted_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`.execute(trx)
+      await sql`CREATE TABLE notification_deliveries(id uuid PRIMARY KEY,channel_id uuid NOT NULL REFERENCES notification_channels,channel_revision integer NOT NULL,channel_name text NOT NULL,kind text NOT NULL,run_id uuid REFERENCES runs,event text NOT NULL CHECK(event IN ('success','failure','test')),payload jsonb NOT NULL,status text NOT NULL CHECK(status IN ('queued','sending','retry_wait','succeeded','failed','uncertain','cancelled')),attempt integer NOT NULL DEFAULT 0,max_attempts integer NOT NULL DEFAULT 3,execution_token uuid,worker_epoch uuid,next_attempt_at timestamptz,error_code text,error_message text,created_at timestamptz NOT NULL DEFAULT now(),finished_at timestamptz,UNIQUE(channel_id,run_id,event))`.execute(trx)
+      await sql`CREATE TABLE notification_attempts(delivery_id uuid NOT NULL REFERENCES notification_deliveries,attempt integer NOT NULL,status text NOT NULL,started_at timestamptz NOT NULL DEFAULT clock_timestamp(),finished_at timestamptz,error_code text,error_message text,PRIMARY KEY(delivery_id,attempt))`.execute(trx)
+      await sql`CREATE INDEX notification_deliveries_due ON notification_deliveries(next_attempt_at,created_at) WHERE status IN ('queued','retry_wait')`.execute(trx)
+      await sql`CREATE TABLE notification_requests(key text PRIMARY KEY,actor text NOT NULL,kind text NOT NULL,resource_id uuid NOT NULL,revision integer,confirm_duplicate boolean NOT NULL DEFAULT false,response jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`.execute(trx)
+      // Atomic post-terminal outbox: there is deliberately no history backfill.
+      await sql`CREATE FUNCTION steelkeep_queue_terminal_notifications() RETURNS trigger LANGUAGE plpgsql AS $$
+      DECLARE terminal_event text;
+      BEGIN
+       IF NEW.status NOT IN ('succeeded','failed','interrupted','cancelled') OR OLD.status IN ('succeeded','failed','interrupted','cancelled') THEN RETURN NEW; END IF;
+       terminal_event:=CASE WHEN NEW.status='succeeded' THEN 'success' ELSE 'failure' END;
+       INSERT INTO notification_deliveries(id,channel_id,channel_revision,channel_name,kind,run_id,event,payload,status,next_attempt_at)
+       SELECT gen_random_uuid(),c.id,c.revision,c.name,c.kind,NEW.id,terminal_event,
+       jsonb_build_object('title','steelkeep: '||NEW.type||' '||NEW.status,'text','Operation: '||NEW.type||E'\nStatus: '||NEW.status||E'\nSource: '||coalesce((SELECT name FROM connections WHERE id=NEW.source_id),'Unknown')||E'\nJob: '||NEW.id::text,'runId',NEW.id,'operation',NEW.type,'status',NEW.status,'errorCode',NEW.error_code,'timestamp',clock_timestamp()),'queued',clock_timestamp()
+       FROM notification_channels c WHERE c.enabled AND c.deleted_at IS NULL AND c.events->>terminal_event='true'
+       ON CONFLICT(channel_id,run_id,event) DO NOTHING;
+       RETURN NEW;
+      END $$`.execute(trx)
+      await sql`CREATE TRIGGER steelkeep_terminal_notifications AFTER UPDATE OF status ON runs FOR EACH ROW WHEN(OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION steelkeep_queue_terminal_notifications()`.execute(trx)
+      await sql`CREATE INDEX runs_created_id ON runs(created_at DESC,id DESC)`.execute(trx)
+      await sql`CREATE INDEX artifacts_created_id ON artifacts(created_at DESC,id DESC)`.execute(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(9)`.execute(trx)
+    }
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

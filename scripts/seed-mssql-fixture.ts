@@ -4,7 +4,7 @@ import {readFile,lstat,realpath} from 'node:fs/promises'
 import {S3Client,CreateBucketCommand,HeadBucketCommand} from '@aws-sdk/client-s3'
 import {config} from '../server/config'
 
-export type MssqlProof={remote:boolean;base:string;sqlHost:string;sqlPort:number;s3Endpoint:string;metadataUrl:string;token:string;adminPassword:string;nonce?:string;sqlHostname?:string}
+export type MssqlProof={remote:boolean;base:string;sqlHost:string;sqlPort:number;s3Endpoint:string;metadataUrl:string;token:string;adminPassword:string;nonce?:string;sqlHostname?:string;preExportFailureId?:string;attempt?:string}
 export type FixtureConnection={id:string;name:string;kind:string;config:Record<string,unknown>}
 const fixtureDatabases=['fixture_mssql_source','fixture_mssql_target'],fixtureLogins=['fixture_mssql_reader','fixture_mssql_writer']
 async function privateFile(path:string){
@@ -17,6 +17,8 @@ export async function mssqlProof():Promise<MssqlProof>{
   if(!remote&&process.env.STEELKEEP_ACCEPTANCE!=='synthetic-local-mssql')throw new Error('Explicit synthetic SQL Server acceptance mode required.')
   if(process.platform!=='linux'||process.arch!=='x64'||process.env.STEELKEEP_MSSQL_PHYSICAL_X64!=='1'||process.env.STEELKEEP_MSSQL_ACCEPT_EULA!=='Y')throw new Error('Physical Linux x64 confirmation and operator-provided Microsoft EULA acceptance are required.')
   if(['DEBUG','PWDEBUG','NODE_DEBUG'].some(key=>!!process.env[key]))throw new Error('Disable debug/protocol logs for the private SQL Server proof.')
+  const preExportFailureId=process.env.STEELKEEP_MSSQL_PREEXPORT_FAILURE_ID,attempt=process.env.STEELKEEP_MSSQL_PROOF_ATTEMPT
+  if((preExportFailureId||attempt)&&(!remote||!preExportFailureId||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(preExportFailureId)||!attempt||!/^attempt-[a-z0-9-]{1,48}$/.test(attempt)))throw new Error('A separate remote proof attempt requires an explicit retained pre-export failure ID and safe attempt name.')
   const metadataUrl=remote?'postgres://steelkeep:local-metadata-only@metadata:5432/steelkeep_mssql_proof':'postgres://steelkeep:local-metadata-only@127.0.0.1:54371/steelkeep'
   if(process.env.DATABASE_URL!==metadataUrl||process.env.STEELKEEP_DATABASE_PASSWORD_FILE)throw new Error('SQL Server proof requires its exact fixed synthetic metadata configuration.')
   let nonce:string|undefined,sqlHostname:string|undefined
@@ -29,23 +31,32 @@ export async function mssqlProof():Promise<MssqlProof>{
   if(process.env.STEELKEEP_MSSQL_SA_PASSWORD_FILE&&process.env.STEELKEEP_MSSQL_SA_PASSWORD_FILE!=='/run/steelkeep/mssql-sa-password')throw new Error('Use the exact private synthetic administrator password path.')
   const adminPassword=process.env.STEELKEEP_MSSQL_SA_PASSWORD_FILE==='/run/steelkeep/mssql-sa-password'?await privateFile('/run/steelkeep/mssql-sa-password'):process.env.STEELKEEP_MSSQL_SA_PASSWORD
   if(!adminPassword||adminPassword.length<16||adminPassword.length>128)throw new Error('A strong synthetic fixture administrator password is required.')
-  return {remote,metadataUrl,token,adminPassword,nonce,sqlHostname,base:remote?'http://api:4311':'http://127.0.0.1:4311',sqlHost:remote?'mssql-fixture':'127.0.0.1',sqlPort:remote?1433:54380,s3Endpoint:remote?'http://s3:9000':'http://127.0.0.1:54373'}
+  return {remote,metadataUrl,token,adminPassword,nonce,sqlHostname,preExportFailureId,attempt,base:remote?'http://api:4311':'http://127.0.0.1:4311',sqlHost:remote?'mssql-fixture':'127.0.0.1',sqlPort:remote?1433:54380,s3Endpoint:remote?'http://s3:9000':'http://127.0.0.1:54373'}
 }
+export function mssqlProofResultPath(proof:MssqlProof){return '/run/steelkeep/proof-result'+(proof.attempt?'-'+proof.attempt:'')+'.json'}
 export function sqlConfig(proof:MssqlProof,database:string,user:string,password:string):mssql.config{return {server:proof.sqlHost,port:proof.sqlPort,database,user,password,connectionTimeout:10000,requestTimeout:30000,pool:{min:0,max:1},options:{encrypt:false,trustServerCertificate:false}}}
 export async function proofMetadata(proof:MssqlProof,text:string,values:unknown[]=[]){
   const db=new pg.Client({connectionString:proof.metadataUrl,connectionTimeoutMillis:5000,statement_timeout:10000,query_timeout:12000,options:'-c default_transaction_read_only=on'});db.on('error',()=>{})
   try{await db.connect();return (await db.query(text,values)).rows as Array<Record<string,unknown>>}catch{throw new Error('Private synthetic SQL Server metadata inspection failed; driver details are omitted.')}finally{await db.end().catch(()=>{})}
 }
 export async function guardMssqlMetadata(proof:MssqlProof,phase:'seed'|'recovery'){
+  if(phase==='seed'&&proof.preExportFailureId)throw new Error('An explicit pre-export continuation never permits reseeding or resetting fixture data.')
   const [identity]=await proofMetadata(proof,"SELECT current_database() AS name,current_user AS actor,current_setting('server_version_num')::int AS version,to_regclass('public.connections')::text AS connections")
   if(identity?.name!==(proof.remote?'steelkeep_mssql_proof':'steelkeep')||identity.actor!=='steelkeep'||Math.floor(Number(identity.version)/10000)!==17||!identity.connections)throw new Error('Migrated synthetic PostgreSQL 17 metadata identity was not established.')
   if(proof.remote){
     const identityRows=await proofMetadata(proof,'SELECT singleton,nonce FROM steelkeep_mssql_proof_identity')
     if(identityRows.length!==1||identityRows[0].singleton!==true||identityRows[0].nonce!==proof.nonce)throw new Error('The dedicated metadata proof marker does not match the private project nonce.')
     const [counts]=await proofMetadata(proof,'SELECT (SELECT count(*) FROM owner_account)::int AS owners,(SELECT count(*) FROM browser_sessions)::int AS sessions,(SELECT count(*) FROM agents)::int AS agents,(SELECT count(*) FROM agent_tokens)::int AS tokens,(SELECT count(*) FROM runs)::int AS runs,(SELECT count(*) FROM artifacts)::int AS artifacts,(SELECT count(*) FROM source_blocks)::int AS source_blocks,(SELECT count(*) FROM target_blocks)::int AS target_blocks,(SELECT count(*) FROM connections)::int AS connections,(SELECT count(*) FROM plans)::int AS plans')
-    if(!counts||Object.entries(counts).some(([key,value])=>Number(value)!==(['connections','plans'].includes(key)&&phase==='recovery'?(key==='connections'?3:1):0)))throw new Error('Dedicated SQL Server proof metadata is not fresh; retain existing state instead of replaying.')
+    if(!counts||Object.entries(counts).some(([key,value])=>Number(value)!==(key==='runs'&&proof.preExportFailureId?1:['connections','plans'].includes(key)&&phase==='recovery'?(key==='connections'?3:1):0)))throw new Error('Dedicated SQL Server proof metadata is not fresh; retain existing state instead of replaying.')
     const [pending]=await proofMetadata(proof,'SELECT (SELECT count(*) FROM outbox)::int AS outbox,(SELECT count(*) FROM restore_intents)::int AS intents,(SELECT count(*) FROM schedule_occurrences)::int AS occurrences,(SELECT count(*) FROM audit_events)::int AS audits')
-    if(!pending||Number(pending.outbox)!==0||Number(pending.intents)!==0||Number(pending.occurrences)!==0||phase==='seed'&&Number(pending.audits)!==0)throw new Error('Dedicated metadata contains prior operation or audit history; nothing was reset.')
+    if(!pending||Number(pending.outbox)!==(proof.preExportFailureId?1:0)||Number(pending.intents)!==0||Number(pending.occurrences)!==0||phase==='seed'&&Number(pending.audits)!==0)throw new Error('Dedicated metadata contains prior operation or audit history; nothing was reset.')
+    if(proof.preExportFailureId){
+      const result=JSON.parse(await privateFile('/run/steelkeep/proof-result.json')) as Record<string,unknown>
+      if(result.status!=='failed'||result.stage!=='native-export-failed-DATABASE_TOOL_FAILED'||result.backupRunId!==proof.preExportFailureId||['artifactId','restoreRunId','targetId','targetDatabase'].some(key=>key in result))throw new Error('The retained proof result is not a verified pre-export failure.')
+      const prior=await proofMetadata(proof,"SELECT r.id FROM runs r JOIN plans p ON p.id=r.plan_id JOIN outbox o ON o.run_id=r.id WHERE r.id=$1 AND r.type='backup' AND r.status='failed' AND r.phase='failed' AND r.error_code='DATABASE_TOOL_FAILED' AND r.artifact_id IS NULL AND r.target_id IS NULL AND r.attempt=1 AND NOT r.cancel_requested AND r.source_id=p.source_id AND r.storage_id=p.storage_id AND o.dispatched_at IS NOT NULL",[proof.preExportFailureId])
+      const phases=(await proofMetadata(proof,'SELECT phase FROM events WHERE run_id=$1 ORDER BY id',[proof.preExportFailureId])).map(row=>row.phase)
+      if(prior.length!==1||JSON.stringify(phases)!==JSON.stringify(['queued','preflight','manifest','failed']))throw new Error('The retained operation was not stopped before BACPAC export. Automatic continuation is forbidden.')
+    }
   }else{
     const [owners]=await proofMetadata(proof,'SELECT count(*)::int AS n FROM owner_account')
     if(Number(owners?.n)!==0)throw new Error('Local SQL Server proof refuses metadata with an owner account.')

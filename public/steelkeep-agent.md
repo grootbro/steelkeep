@@ -31,3 +31,18 @@ No AI provider or model subscription is required by Steelkeep.
 
 Tools and REST operations call the same application services. This guide is
 workflow documentation; authorization and safety guards are enforced by Steelkeep.
+
+For complete older history, use `browse_job_history`, `browse_snapshot_history`
+and `get_backup`; the original list tools return bounded recent windows. Reuse
+each opaque cursor with exactly the same filters and order.
+
+Retention is opt-in. Preview candidates first; enabling or changing destructive
+cleanup needs `configure`, `backup:delete`, the current policy revision and an
+explicit permanent-deletion confirmation. Snapshot locks and restore reservations
+remain authoritative. Never enable cleanup merely to complete setup or free space.
+
+Notification inspection needs `read`; channel changes, real tests and retries need
+`configure`. Send a test only when the operator requests an outbound message to
+that configured destination. Provider acceptance does not mean recipient delivery.
+An uncertain send must retain its identity and requires duplicate-risk confirmation
+before an explicit retry. Use delivery details to report earlier attempt failures.

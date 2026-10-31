@@ -27,9 +27,12 @@ RUN test "$TARGETARCH" = amd64 && test "$STEELKEEP_MSSQL_ACCEPT_EULA" = Y \
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS proof
 ARG TARGETARCH
 # The common native runner invokes prlimit even for the .NET helper.
+# SqlClient requires a registered runtime UID even with SQL authentication.
 RUN test "$TARGETARCH" = amd64 \
     && apt-get update && apt-get install -y --no-install-recommends util-linux \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb \
+    && groupadd --gid 10001 steelkeep \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin steelkeep \
     && mkdir -p /run/steelkeep && chmod 1777 /tmp
 WORKDIR /app
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \

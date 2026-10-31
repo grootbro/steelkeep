@@ -3,6 +3,7 @@ import { Kysely, PostgresDialect, type Generated, type ColumnType } from 'kysely
 import { config } from './config'
 import type {Scope} from './auth'
 import type {RetentionPolicy} from './retention-policy'
+import type {NotificationKind,NotificationConfig,NotificationEvents} from './notifications-config'
 
 type DateTime = ColumnType<Date, Date | string | undefined, Date | string>
 interface Connection {
@@ -44,6 +45,8 @@ interface AuditEvent {id:Generated<string>;actor:string;action:string;subject_id
 interface OwnerAccount {singleton:boolean;id:string;name:string;email:string;password_hash:string;auth_version:number;created_at:Generated<Date>;updated_at:Generated<Date>}
 interface BrowserSession {id:string;token_hash:string;owner_id:string|null;auth_version:number|null;issuer_kind:'owner'|'installation'|'legacy'|'agent';issuer_hash:string|null;agent_token_id:string|null;actor:string;scopes:Scope[];expires_at:DateTime;revoked_at:DateTime|null;created_at:Generated<Date>}
 export interface RetentionJob {id:string;plan_id:string;artifact_id:string;policy_revision:number;storage_revision:number;status:'queued'|'deleting'|'retry_wait'|'held'|'cancelled'|'succeeded';attempt:Generated<number>;max_attempts:Generated<number>;next_attempt_at:DateTime|null;execution_token:string|null;worker_epoch:string|null;object_etag:string|null;object_version_id:string|null;error_code:string|null;error_message:string|null;actor:string;created_at:Generated<Date>;finished_at:DateTime|null}
+export interface NotificationChannel {id:string;name:string;kind:NotificationKind;enabled:boolean;revision:Generated<number>;events:NotificationEvents;config:NotificationConfig;secret:string;deleted_at:DateTime|null;created_at:Generated<Date>;updated_at:Generated<Date>}
+export interface NotificationDelivery {id:string;channel_id:string;channel_revision:number;channel_name:string;kind:NotificationKind;run_id:string|null;event:'success'|'failure'|'test';payload:Record<string,unknown>;status:'queued'|'sending'|'retry_wait'|'succeeded'|'failed'|'uncertain'|'cancelled';attempt:Generated<number>;max_attempts:Generated<number>;execution_token:string|null;worker_epoch:string|null;next_attempt_at:DateTime|null;error_code:string|null;error_message:string|null;created_at:Generated<Date>;finished_at:DateTime|null}
 
 export interface Schema {
   owner_account:OwnerAccount;browser_sessions:BrowserSession;
@@ -51,6 +54,8 @@ export interface Schema {
   connections:Connection;plans:Plan;runs:Run;artifacts:Artifact;events:Event;outbox:Outbox;
   restore_intents:RestoreIntent;schedule_occurrences:Occurrence;target_blocks:TargetBlock;source_blocks:SourceBlock;agents:Agent;agent_tokens:AgentToken;audit_events:AuditEvent;
   retention_jobs:RetentionJob;retention_requests:{key:string;actor:string;plan_id:string;job_id:string|null;kind:'run'|'retry';revision:number;response:Record<string,unknown>;created_at:Generated<Date>}
+  notification_attempts:{delivery_id:string;attempt:number;status:string;started_at:Generated<Date>;finished_at:DateTime|null;error_code:string|null;error_message:string|null}
+  notification_channels:NotificationChannel;notification_deliveries:NotificationDelivery;notification_requests:{key:string;actor:string;kind:'test'|'retry';resource_id:string;revision:number|null;confirm_duplicate:boolean;response:Record<string,unknown>;created_at:Generated<Date>}
 }
 export function connectDb(options:{statementTimeoutMs?:number;queryTimeoutMs?:number}={}) {
   const pool = new pg.Pool({ connectionString:config.databaseUrl(),max:8,connectionTimeoutMillis:5000,statement_timeout:options.statementTimeoutMs??30000,query_timeout:options.queryTimeoutMs??35000 })

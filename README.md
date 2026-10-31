@@ -35,7 +35,7 @@ Required engine scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, Cli
 Profiles, prerequisites and packaging gaps are explicit in [engine profiles](docs/engine-profiles.md).
 PostgreSQL 17 and MariaDB 11.4 have passed isolated native MCP recovery against the local fixtures.
 MongoDB 8.0.34, Redis 7.4.12, SQLite, MySQL 8.0.46 and ClickHouse 25.8.12 also passed
-isolated MCP recovery. SQL Server remains pending. This is not a general production support claim.
+isolated MCP recovery. SQL Server export/S3 GET/SHA passed on the authorized x64 stand; import remains interrupted and recovery unqualified. This is not a general production support claim.
 MySQL/MariaDB have distinct compatibility constraints. No PITR, cluster-wide backup, or business
 recovery guarantee is implied by a successful logical dump or a zero CLI exit code.
 
@@ -180,7 +180,7 @@ After Docker recovery, PostgreSQL/MariaDB passed 2 tests / 27 assertions, MySQL 
 assertions: missing bucket and invalid credentials failed at attempt 1 without artifact
 publication or retry during the bounded observation window. Metadata amcheck passed,
 all 46 stored secrets decrypted and 19 S3 objects matched their recorded bytes/SHA-256.
-SQL Server's restricted-source export still requires an owner-provided nonproduction
+The initial SQL Server restricted-source export gate required an owner-provided nonproduction
 physical x64 Linux runner and operator EULA acceptance; its helper compiled successfully.
 The corrected transient-S3 acceptance passed 1 test / 21 assertions in 14.70s:
 only its own RustFS container was stopped/restarted with the same container ID; the same
@@ -195,3 +195,7 @@ deployment or paid service was used.
 MIT licensed; adapted interface provenance and font notices: [third-party notices](THIRD-PARTY-NOTICES.md).
 
 Snapshot cleanup is opt-in: [retention policies, permissions and qualified storage behavior](docs/retention.md). Existing archives remain retain-all after migration.
+
+Full-history filters and older snapshots: [history API and UI](docs/history.md). Configure delivery separately: [notifications, scoped permissions and provider limits](docs/notifications.md).
+
+SQL Server now has a separately authorized x64 export/S3 SHA proof; import failed safely with its target reserved. See [current helper evidence](docs/mssql-helper-diagnostics.md). This does not qualify SQL Server recovery.

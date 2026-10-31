@@ -16,7 +16,11 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS dotnet
 FROM ${ENGINE_IMAGE} AS worker
 ARG TARGETARCH
 USER root
-RUN test "$TARGETARCH" = amd64 && apt-get update && apt-get install -y --no-install-recommends libicu74 libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+# SqlClient requires a registered runtime UID even with SQL authentication.
+RUN test "$TARGETARCH" = amd64 \
+    && apt-get update && apt-get install -y --no-install-recommends libicu74 libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(id -u steelkeep)" = 10001 && test "$(id -g steelkeep)" = 10001
 COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
 COPY --from=helper /published /opt/steelkeep-dacfx
 ENV DOTNET_ROOT=/usr/share/dotnet \

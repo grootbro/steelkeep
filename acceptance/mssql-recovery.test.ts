@@ -3,9 +3,9 @@ import {randomBytes,randomUUID,createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import {writeFile} from 'node:fs/promises'
 import mssql from 'mssql'
-import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3'
+import {S3Client,GetObjectCommand,ListObjectsV2Command} from '@aws-sdk/client-s3'
 import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
-import {mssqlProof,sqlConfig,guardMssqlMetadata,guardMssqlServer,proofMetadata} from '../scripts/seed-mssql-fixture'
+import {mssqlProof,mssqlProofResultPath,sqlConfig,guardMssqlMetadata,guardMssqlServer,proofMetadata} from '../scripts/seed-mssql-fixture'
 
 const recovery=['synthetic-local-mssql','synthetic-remote-mssql'].includes(process.env.STEELKEEP_ACCEPTANCE??'')?test:test.skip
 type Job={id:string;status:string;artifact_id:string|null;validation:Record<string,unknown>|null;error_code:string|null}
@@ -27,13 +27,17 @@ recovery('MCP SQL Server: READ_ONLY export → S3 GET/SHA → distinct empty tar
     expect(JSON.stringify(value).includes(token)).toBe(false);return value as T
   }
   let stage='preflight'
-  const publicResult:Record<string,unknown>={proof:'mssql-native',status:'preflight'},resultPath='/run/steelkeep/proof-result.json'
+  const publicResult:Record<string,unknown>={proof:'mssql-native',status:'preflight',...(proof.preExportFailureId?{retainedPreExportFailureId:proof.preExportFailureId,attempt:proof.attempt}:{})},resultPath=mssqlProofResultPath(proof)
   async function record(values:Record<string,unknown>){Object.assign(publicResult,values);if(proof.remote)await writeFile(resultPath,JSON.stringify(publicResult,null,2)+'\n',{mode:0o600})}
   async function finished(id:string){const until=Date.now()+240000;while(Date.now()<until){const job=await tool<Job>('get_job',{id});if(['succeeded','failed','cancelled','interrupted'].includes(job.status)){if(job.status!=='succeeded'){stage+='-'+job.status+(/^[A-Z0-9_]{1,60}$/.test(job.error_code??'')?'-'+job.error_code:'');throw new Error('Native SQL Server operation did not succeed.')}return job}await new Promise(resolve=>setTimeout(resolve,250))}throw new Error('SQL Server job deadline exceeded; retain target and inspect result, never replay import')}
   let targetPool:mssql.ConnectionPool|undefined,sourcePool:mssql.ConnectionPool|undefined
   try{
     const inspector=new mssql.ConnectionPool(sqlConfig(proof,'master','sa',proof.adminPassword));inspector.on('error',()=>{})
     try{await inspector.connect();await guardMssqlServer(proof,inspector,'recovery')}finally{await inspector.close().catch(()=>{})}
+    if(proof.preExportFailureId){
+      const storage=new S3Client({endpoint:proof.s3Endpoint,region:'us-east-1',forcePathStyle:true,credentials:{accessKeyId:'steelkeep-local',secretAccessKey:'local-s3-fixture-only'},maxAttempts:1})
+      try{const objects=await storage.send(new ListObjectsV2Command({Bucket:'steelkeep-mssql-fixture',MaxKeys:1}),{abortSignal:AbortSignal.timeout(10000)});if(objects.IsTruncated||(objects.Contents?.length??0)!==0)throw new Error('The retained pre-export stand unexpectedly has an object. Preserve it and refuse continuation.')}finally{storage.destroy()}
+    }
     if(proof.remote)await writeFile(resultPath,JSON.stringify(publicResult,null,2)+'\n',{mode:0o600,flag:'wx'})
     await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+token}}}))
     const connections=await tool<Connection[]>('list_connections'),source=connections.find(row=>row.name==='SQL Server · fixture'&&row.kind==='mssql'&&row.config.database==='fixture_mssql_source'&&!row.config.restoreTarget)

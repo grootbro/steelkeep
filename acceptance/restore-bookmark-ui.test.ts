@@ -20,6 +20,7 @@ acceptance('intercepted UI preserves a confirmed restore across close/reload and
       const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1','')
       const reply=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)})
       if(path==='/auth/status')return reply({setupRequired:false,authenticated:true,bootstrapAuthorized:false,user:{id:id(8),name:'Synthetic owner',email:'synthetic@example.test'}})
+      if(path==='/capabilities')return reply({operations:[]})
       if(path==='/me')return reply({actor,scopes:['read','restore:run']})
       if(path==='/overview')return reply({serverTime:now,jobs:[],connections:[connection(source,'Source'),connection(target,'Empty target',true),{...connection(storage,'Storage'),kind:'s3',config:{bucket:'synthetic-only',endpoint:'http://synthetic.invalid'}}],plans:[],backups:[artifact]})
       if(path==='/jobs')return reply([])

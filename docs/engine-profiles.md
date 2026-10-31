@@ -5,8 +5,10 @@ ClickHouse and SQL Server, plus S3-compatible artifact storage. All eight profil
 have explicit acceptance gates. Local review is now authorized: PostgreSQL 17 and
 MariaDB 11 passed MCP and UI recovery; MongoDB 8.0.34, Redis 7.4.12 and SQLite passed
 MCP recovery. MySQL 8.0.46 passed 1 test / 63 assertions and ClickHouse 25.8.12
-passed 1 test / 20 assertions through native MCP after Docker recovery. SQL Server runtime
-remains pending on a supported nonproduction x64 runner; its helper compiled. A form option or
+passed 1 test / 20 assertions through native MCP after Docker recovery. On the separately
+authorized A-server stand, SQL Server 2022 exported a real BACPAC and passed independent
+S3 GET/SHA verification. Import failed and remains interrupted with its target blocked;
+SQL Server recovery is not qualified. A form option or
 ordinary recovery pass does not establish arbitrary-schema or production support.
 See the [acceptance ledger](acceptance.md) for remaining adverse-case and packaging gates.
 
@@ -58,8 +60,9 @@ other database grants, inherited roles and GRANT OPTION remain disallowed.
 Source: `tools/Steelkeep.DacFx`. Its project pins Microsoft.SqlServer.DacFx 170.5.96.
 The owning operator must provision a supported Linux x64 .NET 10 environment and
 review the actual Microsoft package terms. Initial authoring did not execute the helper;
-the later native-tooling checkpoint compiled it, while actual SQL Server runtime remains
-unqualified. The application's MIT license does not relicense Microsoft binaries.
+the later checkpoint compiled and ran it on the isolated Linux x64 stand. Read-only
+manifest, long JSON handling, export and independent stored bytes were checked; import
+failed and full recovery remains unqualified. See [helper diagnostics](mssql-helper-diagnostics.md). The application's MIT license does not relicense Microsoft binaries.
 
 During the later authorized build phase, publish the helper to a protected worker
 directory and set `STEELKEEP_DACFX_HELPER` to its absolute `Steelkeep.DacFx.dll` path.
