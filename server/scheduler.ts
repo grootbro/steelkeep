@@ -9,8 +9,8 @@ import {audit} from './agents'
 // Missed slots over 60 seconds old are recorded and skipped; no catch-up flood.
 export async function scheduleDue(services:Services){
  return services.db.transaction().execute(async trx=>{
-  const clock=await sql<{now:Date}>`SELECT now() AS now`.execute(trx),now=clock.rows[0].now
-  const plans=await trx.selectFrom('plans').selectAll().where('enabled','=',true).where('cron','is not',null).where('next_due','<=',now).orderBy('next_due').forUpdate().skipLocked().limit(50).execute()
+  const clock=await sql<{now:Date}>`SELECT clock_timestamp() AS now`.execute(trx)
+  const plans=await trx.selectFrom('plans').selectAll().where('enabled','=',true).where('cron','is not',null).where('next_due','<=',clock.rows[0].now).orderBy('next_due').forUpdate().skipLocked().limit(50).execute()
   if(!plans.length)return {queued:0,processed:0}
   // Retain one global row order across the entire batch, not just each plan.
   const connections=await lockConnections(trx,plans.flatMap(plan=>[plan.source_id,plan.storage_id]))
@@ -19,6 +19,8 @@ export async function scheduleDue(services:Services){
   let queued=0
   for(const plan of plans){
    if(!plan.cron||!plan.next_due)continue
+   // Lock waits must not preserve a stale transaction-start scheduling window.
+   const clock=await sql<{now:Date}>`SELECT clock_timestamp() AS now`.execute(trx),now=clock.rows[0].now
    const due=new Date(plan.next_due),next=nextOccurrence(plan.cron,plan.timezone,now)
    const occurrence=await trx.selectFrom('schedule_occurrences').select('plan_id').where('plan_id','=',plan.id).where('due_at','=',due).executeTakeFirst()
    if(occurrence){await trx.updateTable('plans').set({next_due:next}).where('id','=',plan.id).execute();continue}
