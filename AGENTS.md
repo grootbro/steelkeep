@@ -6,6 +6,9 @@ The owner expanded the objective to a complete platform on 31 October. Read GOAL
 
 ## Current user instructions (31 October 2026, take priority)
 
+- **Latest owner override:** stop Docker Desktop and local development processes, clean this project's disposable files, and continue writing code locally. All further application runs, browsers, installs, builds, typechecks and test execution must happen on an isolated server stand. Do not restart local Docker/Vite or reinstall local dependencies without a new owner instruction. File reads/edits, Git and scoped cleanup remain local. Preserve database/artifact volumes, metadata/secrets, original brand assets and proof evidence. This supersedes the earlier local-preview/run authorization below.
+- The owner specifically requests a dedicated visual-design agent and close visual correspondence to Databasement, especially its dashboard and then the remaining screens. Inspect actual reference source/composition; keep Steelkeep's supplied PNG branding and improve polish without replacing the reference with a generic dashboard.
+
 - Code/design-first phase is complete enough for local review. On 31 October the owner asked «есть что локально посмотреть уже?»; local install/build/typecheck/tests and isolated Steelkeep fixture services are now authorized as necessary to provide a working local preview. Start and verify the app, provide its URL; preserve existing fixture volumes. Do not launch a visible browser prematurely or touch production. Earlier passed checks are historical evidence only.
 - UI must closely follow Databasement's polished operational dashboard and screens; use Salt.md as a second source of useful interaction/technology ideas. User rejected the muddy green direction. Read actual reference source, don't substitute personal minimalist styling.
 - User explicitly permits reusing open-source interface code subject to its license. Preserve attribution for adapted Databasement MIT code. Salt.md local source is AGPL; don't silently copy its code into differently licensed product.
@@ -22,6 +25,8 @@ The owner expanded the objective to a complete platform on 31 October. Read GOAL
 - Implement finished slices; do not replace the requested product with a mocked dashboard.
 
 ## Local resources
+
+- Local execution is currently suspended by the latest owner override. The existing dependencies/build output were removed as reproducible files; the lockfile remains authoritative. Instructions below describe the earlier development workflow and do not authorize restarting it.
 
 - Use the existing Vite server and source-mounted API/worker for code, CSS and auth work. Do not rebuild Docker images for UI edits.
 - Build immutable images only for an explicit packaging checkpoint or changed native dependencies. Build one image at a time; inspect host free space first and never assume a warm cache.
