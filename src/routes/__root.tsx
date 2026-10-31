@@ -7,7 +7,7 @@ import {queryClient,dbClient} from '../state'
 import {Brand} from '../brand'
 import '../style.css'
 export const Route=createRootRoute({
-  head:()=>({meta:[{charSet:'utf-8'},{name:'viewport',content:'width=device-width, initial-scale=1'},{title:'steelkeep — Backup & recovery'}],links:[{rel:'icon',type:'image/svg+xml',href:'/brandassets/mark.svg'}]}),
+  head:()=>({meta:[{charSet:'utf-8'},{name:'viewport',content:'width=device-width, initial-scale=1'},{title:'steelkeep — Backup & recovery'}],links:[{rel:'icon',type:'image/png',href:'/brandassets/mark.png'}]}),
   shellComponent:Document,
   component:()=> <QueryClientProvider client={queryClient}><DbProvider client={dbClient}><Outlet/></DbProvider></QueryClientProvider>,
   errorComponent:WorkspaceError

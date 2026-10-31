@@ -25,7 +25,7 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
  const directory=await mkdtemp(join(tmpdir(),'steelkeep-owner-ui-'));await chmod(directory,0o700)
  const installationKey=randomBytes(32).toString('hex'),password='UI owner '+randomBytes(20).toString('hex'),replacement='UI changed '+randomBytes(20).toString('hex')
  const email='ui-owner-'+randomBytes(6).toString('hex')+'@example.test',name='Synthetic UI owner'
- const values:Record<string,string>={name,email,password,confirmPassword:password,installationKey,wrongPassword:'deliberately-wrong',currentPassword:password,newPassword:replacement,confirmNewPassword:replacement,replacement}
+ const values:Record<string,string>={name,email,password,confirmPassword:password,installationKey,invalidSetupKey:randomBytes(32).toString('hex'),wrongPassword:'deliberately-wrong',currentPassword:password,newPassword:replacement,confirmNewPassword:replacement,replacement}
  const children:Array<{child:ChildProcess;exited:Promise<void>}>=[]
  let browser:Browser|undefined
  const env={...process.env,DATABASE_URL:databaseUrl,STEELKEEP_DATABASE_PASSWORD_FILE:'',STEELKEEP_SCOPED_TOKENS_FILE:'',STEELKEEP_KEY_FILE:join(directory,'key'),STEELKEEP_TOKEN_FILE:join(directory,'token'),STEELKEEP_ALLOWED_HOSTS:'fixture,mysql-fixture,s3',STEELKEEP_ALLOWED_ORIGINS:origin,STEELKEEP_PUBLIC_HOSTS:'127.0.0.1',STEELKEEP_SECURE_COOKIE:'false',STEELKEEP_DEV_API_PORT:'4322',HOST:'127.0.0.1',PORT:'4322'}
@@ -52,24 +52,52 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
   start(['server/index.ts']);start(['run','vite','--port','4321','--strictPort'])
   const deadline=Date.now()+40000;await ready(api+'/api/v1/health',deadline);await ready(origin,deadline)
   browser=await chromium.launch({headless:true,timeout:10000})
-  const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors:string[]=[]
+  const context=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'dark'}),page=await context.newPage(),errors:string[]=[]
   page.setDefaultTimeout(5000);page.setDefaultNavigationTimeout(10000)
   page.on('pageerror',error=>errors.push(error.name))
   await page.exposeBinding('__steelkeepAuthProof',({frame},key:unknown)=>{
    if(frame!==page.mainFrame()||new URL(frame.url()).origin!==origin||typeof key!=='string'||!Object.hasOwn(values,key))throw new Error('Private credential binding refused.')
    return values[key]
   })
-  await page.goto(origin);await page.getByRole('heading',{name:'Create your owner account'}).waitFor()
-  expect(await page.getByLabel('Your name',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
-  await page.keyboard.press('Tab');expect(await page.getByLabel('Email',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
+  await page.goto(origin);await page.getByRole('heading',{name:'Set up your installation'}).waitFor()
+  expect(await page.locator('form input').count()).toBe(1)
+  expect(await page.getByLabel('Setup key',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
+  // Old "system" preferences and OS dark mode must not select a third mode.
+  await page.evaluate(()=>localStorage.setItem('steelkeep-auth-theme','system'));await page.reload()
+  await page.getByRole('heading',{name:'Set up your installation'}).waitFor()
+  expect(await page.locator('.auth-screen').getAttribute('data-theme')).toBe('light')
   await page.setViewportSize({width:390,height:844})
-  for(const theme of ['light','dark']){
-   await page.getByRole('combobox',{name:'Color theme'}).selectOption(theme)
+  for(const theme of ['dark','light']){
+   await page.getByRole('button',{name:`Switch to ${theme} theme`,exact:true}).click()
    expect(await page.locator('.auth-screen').getAttribute('data-theme')).toBe(theme)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true)
   }
+  expect(await page.getByRole('combobox').count()).toBe(0)
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('heading',{name:'Welcome back'}).waitFor()
+  expect(await page.locator('input[name="installationKey"]').count()).toBe(0)
+  await page.getByRole('button',{name:'Set up installation',exact:true}).click();await page.getByRole('heading',{name:'Set up your installation'}).waitFor()
+  await privateFill(page,'installationKey','invalidSetupKey');await page.getByRole('button',{name:'Continue',exact:true}).click()
+  await page.getByText('This setup key is invalid. Check the key and try again.',{exact:true}).waitFor();expect(await page.getByRole('alert').innerText()).toBe('This setup key is invalid. Check the key and try again.')
+  expect(await page.locator('input[name="installationKey"]').inputValue()).toBe('')
+  // A real read-scoped agent key can open a limited session but must never
+  // claim the installation. The UI must revoke that accidental session.
+  const agentResponse=await fetch(api+'/api/v1/agents',{method:'POST',headers:{authorization:'Bearer '+installationKey,'content-type':'application/json'},body:JSON.stringify({name:'Setup claim denial fixture'})})
+  if(!agentResponse.ok)throw new Error('Isolated claim-denial agent provisioning failed; credentials withheld.')
+  const agent=await agentResponse.json() as {id:string}
+  const issuedResponse=await fetch(api+`/api/v1/agents/${agent.id}/tokens`,{method:'POST',headers:{authorization:'Bearer '+installationKey,'content-type':'application/json'},body:JSON.stringify({name:'Read-only claim denial',scopes:['read'],expiresInHours:1})})
+  if(!issuedResponse.ok)throw new Error('Isolated claim-denial token provisioning failed; credentials withheld.')
+  const issued=await issuedResponse.json() as {token:string};values.agentSetupKey=issued.token
+  await privateFill(page,'installationKey','agentSetupKey');await page.getByRole('button',{name:'Continue',exact:true}).click()
+  await page.getByText('This key cannot authorize installation setup. Use the installation setup key.',{exact:true}).waitFor();expect(await page.getByRole('alert').innerText()).toBe('This key cannot authorize installation setup. Use the installation setup key.')
+  expect((await context.cookies()).some(cookie=>cookie.name==='steelkeep_session')).toBe(false)
+  expect(await page.locator('input[name="name"]').count()).toBe(0)
+  await privateFill(page,'installationKey');await page.getByRole('button',{name:'Continue',exact:true}).click()
+  await page.getByRole('heading',{name:'Create your owner account'}).waitFor()
+  expect(await page.locator('input[name="installationKey"]').count()).toBe(0)
+  expect(await page.getByLabel('Your name',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
+  await page.keyboard.press('Tab');expect(await page.getByLabel('Email',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
   await page.setViewportSize({width:1440,height:1000})
-  for(const field of ['name','email','password','confirmPassword','installationKey'])await privateFill(page,field)
+  for(const field of ['name','email','password','confirmPassword'])await privateFill(page,field)
   await page.getByRole('button',{name:'Create account',exact:true}).click()
   const navigation=page.getByRole('navigation',{name:'Main navigation'});await navigation.waitFor({timeout:15000})
   expect((await fetch(api+'/api/v1/me',{headers:{cookie:'steelkeep_session='+installationKey}})).status).toBe(401)
