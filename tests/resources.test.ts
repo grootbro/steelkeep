@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test'
-import {resourceKey,sameResource} from '../server/resources'
+import {resourceKey,sameResource,sourceAdmissionKey,sourceBlockMatches} from '../server/resources'
 
 test('host aliases cannot bypass conservative SQL target reservation',()=>{
   const a={kind:'postgres',config:{host:'primary.internal',database:'Recovery'}}
@@ -15,4 +15,17 @@ test('Redis database indexes and canonical SQLite paths define reservations',()=
   expect(resourceKey({kind:'sqlite',config:{path:'/data/targets/recovery.sqlite'}})).toBe('sqlite:/data/targets/recovery.sqlite')
   expect(()=>resourceKey({kind:'sqlite',config:{path:'relative.sqlite'}})).toThrow()
   expect(()=>resourceKey({kind:'s3',config:{}})).toThrow()
+})
+test('Mongo source admission covers server-wide locks across databases and endpoint aliases without merging restore targets',()=>{
+  const a={kind:'mongodb',config:{host:'primary.internal',port:27017,database:'orders'}},b={kind:'mongodb',config:{host:'alias.internal',port:27018,database:'billing'}}
+  expect(sourceAdmissionKey(a)).toBe(sourceAdmissionKey(b))
+  expect(resourceKey(a)).not.toBe(resourceKey(b))
+  expect(sourceBlockMatches(a,'mongodb:alias.internal:27018')).toBe(true)
+  expect(sourceBlockMatches(b,'mongodb:primary.internal:27017')).toBe(true)
+  expect(sourceBlockMatches(a,'postgres:orders')).toBe(false)
+  const sql={kind:'postgres',config:{database:'orders'}}
+  expect(sourceAdmissionKey(sql)).toBe(resourceKey(sql))
+  expect(sourceBlockMatches(sql,'postgres:orders')).toBe(true)
+  expect(sourceBlockMatches(sql,'postgres:billing')).toBe(false)
+  expect(sourceBlockMatches(sql,'mongodb:primary.internal:27017')).toBe(false)
 })

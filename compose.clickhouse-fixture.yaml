@@ -2,13 +2,13 @@
 services:
   api:
     environment:
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3}
       STEELKEEP_CLICKHOUSE_BACKUP_ROOTS: /steelkeep-clickhouse-backups
     volumes:
       - ./.steelkeep/extra-fixtures/clickhouse/backups:/steelkeep-clickhouse-backups
   worker:
     environment:
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3}
       STEELKEEP_CLICKHOUSE_BACKUP_ROOTS: /steelkeep-clickhouse-backups
     volumes:
       - ./.steelkeep/extra-fixtures/clickhouse/backups:/steelkeep-clickhouse-backups

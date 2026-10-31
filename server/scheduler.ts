@@ -2,7 +2,8 @@ import {randomUUID} from 'node:crypto'
 import {sql} from 'kysely'
 import type {Services} from './services'
 import {nextOccurrence,lockConnections} from './services'
-import {resourceKey} from './resources'
+import {sourceAdmissionKey} from './resources'
+import {sourceBlocked} from './source-locks'
 import {audit} from './agents'
 
 // The worker calls this tick. PostgreSQL time and row locks make replicas safe.
@@ -14,7 +15,7 @@ export async function scheduleDue(services:Services){
   if(!plans.length)return {queued:0,processed:0}
   // Retain one global row order across the entire batch, not just each plan.
   const connections=await lockConnections(trx,plans.flatMap(plan=>[plan.source_id,plan.storage_id]))
-  const sourceKeys=[...new Set(plans.map(plan=>resourceKey(connections.get(plan.source_id)!)))].sort()
+  const sourceKeys=[...new Set(plans.map(plan=>sourceAdmissionKey(connections.get(plan.source_id)!)))].sort()
   for(const key of sourceKeys)await sql`SELECT pg_advisory_xact_lock(hashtextextended(${key},1))`.execute(trx)
   let queued=0
   for(const plan of plans){
@@ -24,10 +25,10 @@ export async function scheduleDue(services:Services){
    const due=new Date(plan.next_due),next=nextOccurrence(plan.cron,plan.timezone,now)
    const occurrence=await trx.selectFrom('schedule_occurrences').select('plan_id').where('plan_id','=',plan.id).where('due_at','=',due).executeTakeFirst()
    if(occurrence){await trx.updateTable('plans').set({next_due:next}).where('id','=',plan.id).execute();continue}
-   const source=connections.get(plan.source_id)!,sourceKey=resourceKey(source)
+   const source=connections.get(plan.source_id)!,sourceKey=sourceAdmissionKey(source)
    const active=await trx.selectFrom('runs').innerJoin('connections','connections.id','runs.source_id').select(['connections.kind','connections.config']).where('runs.status','in',['queued','running','cancelling']).execute()
-   const blocked=await trx.selectFrom('source_blocks').select('run_id').where('resource_key','=',sourceKey).executeTakeFirst()
-   let outcome=now.getTime()-due.getTime()>60000?'skipped_missed':blocked?'skipped_source_blocked':active.some(row=>resourceKey(row)===sourceKey)?'skipped_overlap':'queued',id:string|null=null
+   const blocked=await sourceBlocked(trx,source)
+   let outcome=now.getTime()-due.getTime()>60000?'skipped_missed':blocked?'skipped_source_blocked':active.some(row=>sourceAdmissionKey(row)===sourceKey)?'skipped_overlap':'queued',id:string|null=null
    if(outcome==='queued'){
     id=randomUUID()
     await trx.insertInto('runs').values({id,plan_id:plan.id,type:'backup',status:'queued',phase:'queued',idempotency_key:`schedule:${plan.id}:${due.toISOString()}`,source_id:plan.source_id,storage_id:plan.storage_id,target_id:null,artifact_id:null,started_at:null,finished_at:null,heartbeat_at:null,error_code:null,error_message:null,validation:null,cancel_requested:false,attempt:0,execution_token:null,review_fingerprint:null}).execute()

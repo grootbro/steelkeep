@@ -1,6 +1,15 @@
 import type {Services} from './services'
 import type {SourceLockContext,SourceLockHooks} from './engines/types'
 import {AppError} from './security'
+import type {Kysely} from 'kysely'
+import type {Schema} from './db'
+import {resourceKey,type Resource} from './resources'
+
+export async function sourceBlocked(db:Kysely<Schema>,source:Resource):Promise<boolean> {
+  const query=db.selectFrom('source_blocks').select('run_id')
+  // A Mongo fsync journal covers every database; endpoint aliases are not trustworthy identities.
+  return Boolean(await (source.kind==='mongodb'?query.where('resource_key','like','mongodb:%'):query.where('resource_key','=',resourceKey(source))).executeTakeFirst())
+}
 
 /** A crashed process leaves this journal intact: fsync locks can outlive the worker. */
 export function createSourceLockHooks(services:Services,runId:string,executionToken:string):SourceLockHooks {

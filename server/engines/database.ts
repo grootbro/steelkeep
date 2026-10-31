@@ -284,7 +284,7 @@ export async function nativeCredentials(engine:Engine,c:DatabaseConfig,s:DbSecre
   if(engine==='postgres'){
     const path=join(dir,'pgpass'),escape=(v:string)=>v.replaceAll('\\','\\\\').replaceAll(':','\\:')
     await writeFile(path,[c.host,String(c.port),c.database,c.user,s.password].map(escape).join(':')+'\n',{mode:0o600,flag:'wx'})
-    return {env:toolEnv({PGPASSFILE:path,PGSSLMODE:c.tls?'verify-full':'disable',PGCONNECT_TIMEOUT:'10',PGOPTIONS:'-c timezone=UTC -c datestyle=ISO,YMD -c extra_float_digits=3 -c intervalstyle=postgres -c search_path=pg_catalog -c bytea_output=hex -c lc_monetary=C'}),args:['--host',c.host,'--port',String(c.port),'--username',c.user,'--dbname',c.database,'--no-password']}
+    return {env:toolEnv({PGPASSFILE:path,PGSSLMODE:c.tls?'verify-full':'disable',...(c.tls?{PGSSLROOTCERT:'system'}:{}),PGCONNECT_TIMEOUT:'10',PGOPTIONS:'-c timezone=UTC -c datestyle=ISO,YMD -c extra_float_digits=3 -c intervalstyle=postgres -c search_path=pg_catalog -c bytea_output=hex -c lc_monetary=C'}),args:['--host',c.host,'--port',String(c.port),'--username',c.user,'--dbname',c.database,'--no-password']}
   }
   const path=join(dir,'client.cnf'),escape=(v:string)=>'"'+v.replaceAll('\\','\\\\').replaceAll('"','\\"')+'"'
   const transport=engine==='mysql'?`ssl-mode=${c.tls?'VERIFY_IDENTITY':'DISABLED'}${c.tls?'':'\nget-server-public-key=TRUE'}`:`ssl=${c.tls?'true':'false'}\nssl-verify-server-cert=${c.tls?'true':'false'}`

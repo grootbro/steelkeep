@@ -10,7 +10,7 @@
 services:
   api:
     environment:
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3}
       STEELKEEP_SQLITE_SOURCE_ROOTS: /var/lib/steelkeep-fixtures/sqlite/source
       STEELKEEP_SQLITE_TARGET_ROOTS: /var/lib/steelkeep-fixtures/sqlite/target
     volumes:
@@ -18,7 +18,7 @@ services:
       - ./.steelkeep/extra-fixtures/sqlite/target:/var/lib/steelkeep-fixtures/sqlite/target:rw
   worker:
     environment:
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,s3}
       STEELKEEP_SQLITE_SOURCE_ROOTS: /var/lib/steelkeep-fixtures/sqlite/source
       STEELKEEP_SQLITE_TARGET_ROOTS: /var/lib/steelkeep-fixtures/sqlite/target
     volumes:

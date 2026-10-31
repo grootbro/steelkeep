@@ -12,7 +12,7 @@ services:
       DATABASE_URL: postgres://steelkeep:local-metadata-only@metadata:5432/steelkeep
       STEELKEEP_KEY_FILE: /run/steelkeep/key
       STEELKEEP_TOKEN_FILE: /run/steelkeep/token
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,s3}
       STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4310,http://localhost:4310
       HOST: 0.0.0.0
       PORT: 4311

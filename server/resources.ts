@@ -1,6 +1,6 @@
 import {AppError} from './security'
 
-type Resource={kind:string;config:Record<string,unknown>}
+export type Resource={kind:string;config:Record<string,unknown>}
 
 /** Deliberately conservative across host aliases; canonical local paths are stored at admission. */
 export function resourceKey({kind,config}:Resource):string {
@@ -18,3 +18,12 @@ export function resourceKey({kind,config}:Resource):string {
 }
 
 export function sameResource(a:Resource,b:Resource):boolean {return resourceKey(a)===resourceKey(b)}
+
+export function sourceAdmissionKey(resource:Resource):string {
+  // shortcut: serialize independent Mongo servers too, until verified physical identity is available at admission.
+  return resource.kind==='mongodb'?'mongodb:all-sources':resourceKey(resource)
+}
+
+export function sourceBlockMatches(resource:Resource,key:string):boolean {
+  return resource.kind==='mongodb'?key.startsWith('mongodb:'):key===resourceKey(resource)
+}

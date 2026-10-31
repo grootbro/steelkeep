@@ -9,7 +9,8 @@ import type { Schema } from './db'
 import type { ConnectionInput, ConnectionUpdateInput, PlanInput, PlanUpdateInput } from './contracts'
 import { allowedHost, identifier, seal, unseal, AppError, safeFailure } from './security'
 import {config} from './config'
-import {resourceKey} from './resources'
+import {resourceKey,sourceAdmissionKey,sourceBlockMatches} from './resources'
+import {sourceBlocked} from './source-locks'
 import {probeArtifactAvailability,availabilityStates,type Availability} from './artifact-availability'
 import {AgentServices,audit} from './agents'
 import {authenticateRequest} from './auth'
@@ -99,8 +100,8 @@ export class Services {
   return result
  }
  async connections(){
-  const [rows,blocks]=await Promise.all([this.db.selectFrom('connections').select(['id','name','kind','config','check_status','checked_at','created_at','updated_at','revision']).orderBy('created_at','desc').execute(),this.db.selectFrom('target_blocks').select(['target_id','resource_key']).execute()])
-  return rows.map(row=>({...row,blocked:row.kind!=='s3'&&blocks.some(b=>b.resource_key===resourceKey(row))}))
+  const [rows,blocks,sourceBlocks]=await Promise.all([this.db.selectFrom('connections').select(['id','name','kind','config','check_status','checked_at','created_at','updated_at','revision']).orderBy('created_at','desc').execute(),this.db.selectFrom('target_blocks').select(['target_id','resource_key']).execute(),this.db.selectFrom('source_blocks').select('resource_key').execute()])
+  return rows.map(row=>({...row,blocked:row.kind!=='s3'&&(blocks.some(b=>b.resource_key===resourceKey(row))||sourceBlocks.some(b=>sourceBlockMatches(row,b.resource_key)))}))
  }
  async connection(id:string){
   const row=await this.db.selectFrom('connections').selectAll().where('id','=',validId(id)).executeTakeFirst()
@@ -176,12 +177,12 @@ export class Services {
    if(configChanged||secretChanged){
     const active=await trx.selectFrom('runs').select('id').where('status','in',['queued','running','cancelling']).where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id),eb('target_id','=',id)])).executeTakeFirst()
     const journal=await trx.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').select('source_blocks.run_id').where('runs.source_id','=',id).executeTakeFirst()
-    if(active||journal)throw new AppError('CONNECTION_BUSY','Credentials and operation settings cannot change while a job or uncertain source lock uses this connection.',409)
+    if(active||journal||row.kind!=='s3'&&await sourceBlocked(trx,row))throw new AppError('CONNECTION_BUSY','Credentials and operation settings cannot change while a job or uncertain source lock uses this connection.',409)
    }
    const changed=await trx.updateTable('connections').set({name:input.name.trim(),revision:row.revision+1,updated_at:sql`now()`,...(configChanged?{config:nextConfig}:{}),...(secretChanged?{secret:nextSecret}:{}),...(configChanged||secretChanged?{check_status:'untested',checked_at:null}:{})}).where('id','=',id).where('revision','=',input.revision).returningAll().executeTakeFirst()
    if(!changed)throw new AppError('REVISION_CONFLICT','This connection changed. Reload it before saving.',409)
    await audit(trx,actor,secretChanged?'connection.credentials.rotated':configChanged?'connection.options.updated':'connection.renamed',id)
-   const blocked=row.kind!=='s3'&&Boolean(await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',resourceKey(row)).executeTakeFirst())
+   const blocked=row.kind!=='s3'&&(Boolean(await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',resourceKey(row)).executeTakeFirst())||await sourceBlocked(trx,row))
    return connectionDto(changed,blocked)
   })
  }
@@ -254,11 +255,11 @@ export class Services {
    if(existing){if(existing.plan_id!==planId||existing.type!=='backup')throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to a different operation.',409);return safeRun(existing)}
    const plan=await trx.selectFrom('plans').selectAll().where('id','=',planId).forUpdate().executeTakeFirst()
    if(!plan)throw new AppError('NOT_FOUND','Plan not found.',404)
-   const connections=await lockConnections(trx,[plan.source_id,plan.storage_id]),source=connections.get(plan.source_id)!,sourceKey=resourceKey(source)
+   const connections=await lockConnections(trx,[plan.source_id,plan.storage_id]),source=connections.get(plan.source_id)!,sourceKey=sourceAdmissionKey(source)
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${sourceKey},1))`.execute(trx)
-   if(await trx.selectFrom('source_blocks').select('run_id').where('resource_key','=',sourceKey).executeTakeFirst())throw new AppError('SOURCE_BLOCKED','An uncertain source lock requires operator reconciliation before another backup.',409)
+   if(await sourceBlocked(trx,source))throw new AppError('SOURCE_BLOCKED','An uncertain source lock requires operator reconciliation before another backup.',409)
    const active=await trx.selectFrom('runs').innerJoin('connections','connections.id','runs.source_id').select(['connections.kind','connections.config']).where('runs.status','in',['queued','running','cancelling']).execute()
-   if(active.some(row=>resourceKey(row)===sourceKey))throw new AppError('SOURCE_BUSY','An operation for this source is already active.',409)
+   if(active.some(row=>sourceAdmissionKey(row)===sourceKey))throw new AppError('SOURCE_BUSY','An operation for this source is already active.',409)
    const id=randomUUID()
    await trx.insertInto('runs').values({id,plan_id:planId,type:'backup',status:'queued',phase:'queued',idempotency_key:key,source_id:plan.source_id,storage_id:plan.storage_id,target_id:null,artifact_id:null,started_at:null,finished_at:null,heartbeat_at:null,error_code:null,error_message:null,validation:null,cancel_requested:false,attempt:0,execution_token:null,review_fingerprint:null}).execute()
    await trx.insertInto('outbox').values({run_id:id,dispatched_at:null}).execute();await trx.insertInto('events').values({run_id:id,phase:'queued',message:'Backup accepted and waiting for a worker.'}).execute();await audit(trx,actor,'backup.queued',id)

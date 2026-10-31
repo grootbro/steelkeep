@@ -3,6 +3,24 @@ import {randomBytes} from 'node:crypto'
 import {seal,unseal,tokenMatches,identifier,safeFailure,AppError} from '../server/security'
 import {nextOccurrence,upcomingOccurrences,authorize,validId} from '../server/services'
 import {resourceKey,sameResource} from '../server/resources'
+import {nativeCredentials} from '../server/engines/database'
+import {mkdtemp,rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+
+test('native PostgreSQL TLS uses system roots and full hostname verification through the sanitized environment',async()=>{
+ for(const tls of [true,false]){
+  const dir=await mkdtemp(join(tmpdir(),'steelkeep-pg-tls-'))
+  try{
+   const credentials=await nativeCredentials('postgres',{host:'synthetic.invalid',port:5432,database:'synthetic',user:'synthetic_reader',tls,restoreTarget:false},{password:'synthetic-local-secret'},dir)
+   expect(credentials.env.PGSSLMODE).toBe(tls?'verify-full':'disable')
+   expect(credentials.env.PGSSLROOTCERT).toBe(tls?'system':undefined)
+   expect(credentials.env.PGPASSFILE).toBe(join(dir,'pgpass'))
+   expect(credentials.env.PGPASSWORD).toBeUndefined()
+   expect(credentials.args).not.toContain('synthetic-local-secret')
+  }finally{await rm(dir,{recursive:true,force:true})}
+ }
+})
 
 test('credentials are authenticated ciphertext; corruption cannot decrypt',()=>{
   const key=randomBytes(32),secret={password:'test-secret-unique'}

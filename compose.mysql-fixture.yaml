@@ -3,7 +3,7 @@
 services:
   api:
     environment: &mysql8_fixture_hosts
-      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,mysql8-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,mssql-fixture,s3
+      STEELKEEP_ALLOWED_HOSTS: ${STEELKEEP_ALLOWED_HOSTS:-fixture,mysql-fixture,mysql8-fixture,mongodb-fixture,redis-fixture,clickhouse-fixture,mssql-fixture,s3}
   worker:
     environment: *mysql8_fixture_hosts
   mysql8-fixture:
