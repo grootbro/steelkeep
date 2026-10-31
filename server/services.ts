@@ -291,7 +291,7 @@ export class Services {
    const intent=await trx.selectFrom('restore_intents').selectAll().where('id','=',intentId).forUpdate().executeTakeFirst()
    if(!intent||intent.actor!==actor)throw new AppError('NOT_FOUND','Restore review not found.',404)
    if(intent.consumed_run_id){if(intent.idempotency_key!==key)throw new AppError('RESTORE_REVIEW_CONSUMED','This review has already been used with another request key.',409);return safeRun(await trx.selectFrom('runs').selectAll().where('id','=',intent.consumed_run_id).executeTakeFirstOrThrow())}
-   const clock=await sql<{now:Date}>`SELECT now() AS now`.execute(trx)
+   const clock=await sql<{now:Date}>`SELECT clock_timestamp() AS now`.execute(trx)
    if(new Date(intent.expires_at)<=clock.rows[0].now)throw new AppError('RESTORE_REVIEW_EXPIRED','Prepare and review this restore again.',409)
    const reused=await trx.selectFrom('runs').select('id').where('idempotency_key','=',key).executeTakeFirst()
    if(reused)throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to another operation.',409)
@@ -303,6 +303,9 @@ export class Services {
    if(blocked)throw new AppError('TARGET_BLOCKED','This target is reserved or contains a previous restore. Prepare a new empty target.',409)
    const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx),intent.artifact_id,intent.target_id)
    if(review.fingerprint!==intent.fingerprint)throw new AppError('RESTORE_REVIEW_CHANGED','The artifact or target changed. Prepare and review again.',409)
+   // Locks and native preflight may outlive the reviewed deadline.
+   const admissionClock=await sql<{now:Date}>`SELECT clock_timestamp() AS now`.execute(trx)
+   if(new Date(intent.expires_at)<=admissionClock.rows[0].now)throw new AppError('RESTORE_REVIEW_EXPIRED','Prepare and review this restore again.',409)
    const id=randomUUID()
    await trx.insertInto('runs').values({id,plan_id:null,type:'restore',status:'queued',phase:'queued',idempotency_key:key,source_id:artifact.source_id,storage_id:artifact.storage_id,target_id:target.id,artifact_id:artifact.id,started_at:null,finished_at:null,heartbeat_at:null,error_code:null,error_message:null,validation:null,cancel_requested:false,attempt:0,execution_token:null,review_fingerprint:intent.fingerprint}).execute()
    await trx.insertInto('target_blocks').values({target_id:target.id,resource_key:name,run_id:id,reason:'Restore reserved; target must not be reused automatically.'}).execute()
