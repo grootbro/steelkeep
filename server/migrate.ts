@@ -121,6 +121,11 @@ try {
       await sql`ALTER TABLE artifacts ADD COLUMN comment text CHECK(comment IS NULL OR char_length(comment)<=2000),ADD COLUMN comment_revision integer NOT NULL DEFAULT 1 CHECK(comment_revision>0),ADD COLUMN commented_at timestamptz`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(10)`.execute(trx)
     }
+    if(!versions.has(11)){
+      await sql`CREATE TABLE artifact_deletion_reviews(id uuid PRIMARY KEY,actor text NOT NULL,artifact_ids uuid[] NOT NULL CHECK(cardinality(artifact_ids) BETWEEN 1 AND 100),fingerprint text NOT NULL,preview jsonb NOT NULL,expires_at timestamptz NOT NULL,idempotency_key text UNIQUE,response jsonb,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),CHECK((idempotency_key IS NULL)=(response IS NULL)))`.execute(trx)
+      await sql`ALTER TABLE retention_jobs ALTER COLUMN plan_id DROP NOT NULL,ADD COLUMN kind text NOT NULL DEFAULT 'policy',ADD COLUMN manual_review_id uuid REFERENCES artifact_deletion_reviews,ADD COLUMN manual_fingerprint text,ADD CONSTRAINT retention_jobs_authorization CHECK((kind='policy' AND plan_id IS NOT NULL AND manual_review_id IS NULL AND manual_fingerprint IS NULL) OR(kind='manual' AND manual_review_id IS NOT NULL AND manual_fingerprint IS NOT NULL AND max_attempts=1))`.execute(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(11)`.execute(trx)
+    }
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

@@ -8,7 +8,7 @@ import {retentionPolicy,selectRetention,retentionScanLimit,retentionBatchLimit,t
 
 export function planRetention(plan:Selectable<Schema['plans']>){return {policy:plan.retention_policy,enabled:plan.retention_enabled,revision:plan.retention_revision,timezone:plan.timezone,lastEvaluatedAt:plan.retention_checked_at,lastErrorCode:plan.retention_error_code,lastErrorMessage:plan.retention_error_message}}
 export function retainedPlanDto(plan:Selectable<Schema['plans']>){const {retention_policy:_,retention_enabled:__,retention_revision:___,retention_checked_at:____,retention_error_code:_____,retention_error_message:______,...rest}=plan;return {...rest,retention:planRetention(plan)}}
-export function retentionJobDto(job:Selectable<RetentionJob>){return {id:job.id,planId:job.plan_id,artifactId:job.artifact_id,status:job.status,attempt:job.attempt,maxAttempts:job.max_attempts,nextAttemptAt:job.next_attempt_at,errorCode:job.error_code,errorMessage:job.error_message,createdAt:job.created_at,finishedAt:job.finished_at}}
+export function retentionJobDto(job:Selectable<RetentionJob>){return {id:job.id,kind:job.kind,planId:job.plan_id,artifactId:job.artifact_id,status:job.status,attempt:job.attempt,maxAttempts:job.max_attempts,nextAttemptAt:job.next_attempt_at,errorCode:job.error_code,errorMessage:job.error_message,createdAt:job.created_at,finishedAt:job.finished_at}}
 function uuid(value:string){if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))throw new AppError('INVALID_ID','Use a valid resource identifier.');return value}
 function requestKey(value:string){if(typeof value!=='string'||value.length<16||value.length>160||/[\r\n\0]/.test(value))throw new AppError('INVALID_REQUEST_KEY','Use a request key of 16 to 160 characters.');return value}
 
@@ -51,7 +51,7 @@ export class RetentionServices{
    if(plan.retention_revision!==input.revision)throw new AppError('REVISION_CONFLICT','The cleanup policy changed. Reload and preview it again.',409)
    if(input.enabled&&(!plan.retention_enabled||JSON.stringify(plan.retention_policy)!==JSON.stringify(policy))&&input.confirmDeletion!==true)throw new AppError('RETENTION_CONFIRMATION_REQUIRED','Explicitly confirm permanent deletion before enabling or changing active cleanup.',409)
    const changed=await trx.updateTable('plans').set({retention_policy:policy,retention_enabled:input.enabled,retention_revision:plan.retention_revision+1,retention_checked_at:null,retention_error_code:null,retention_error_message:null}).where('id','=',planId).returningAll().executeTakeFirstOrThrow()
-   const pending=await trx.selectFrom('retention_jobs').select('artifact_id').where('plan_id','=',planId).where('status','=','queued').where('attempt','=',0).execute()
+   const pending=await trx.selectFrom('retention_jobs').select('artifact_id').where('plan_id','=',planId).where('kind','=','policy').where('status','=','queued').where('attempt','=',0).orderBy('artifact_id').execute()
    for(const row of pending){await trx.selectFrom('artifacts').select('id').where('id','=',row.artifact_id).forUpdate().execute();await cancelUnstarted(trx,row.artifact_id,'POLICY_CHANGED')}
    await audit(trx,principal.actor,input.enabled?'retention.policy.enabled':'retention.policy.saved',planId)
    return {planId,...planRetention(changed)}
@@ -75,7 +75,7 @@ export class RetentionServices{
   if(revision!==undefined&&revision!==plan.retention_revision)throw new AppError('REVISION_CONFLICT','The cleanup policy changed. Preview it again.',409)
   if(!plan.retention_enabled||plan.retention_policy.mode==='keep_all')throw new AppError('RETENTION_DISABLED','Cleanup is not enabled for this plan.',409)
   const selected=await retentionSelection(trx,plan),jobIds:string[]=[]
-  for(const candidate of selected.candidates.slice(0,retentionBatchLimit)){
+  for(const candidate of selected.candidates.slice(0,retentionBatchLimit).sort((a,b)=>a.id.localeCompare(b.id))){
    const artifact=await trx.selectFrom('artifacts').selectAll().where('id','=',candidate.id).forUpdate().executeTakeFirstOrThrow()
    if(artifact.deletion_state!=='active'||artifact.retention_locked)continue
    const current=await retentionSelection(trx,plan)
@@ -107,8 +107,9 @@ export class RetentionServices{
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${key},7))`.execute(trx)
    const previous=await trx.selectFrom('retention_requests').selectAll().where('key','=',key).executeTakeFirst()
    if(previous){if(previous.kind!=='retry'||previous.actor!==principal.actor||previous.job_id!==jobId)throw new AppError('IDEMPOTENCY_CONFLICT','This request key belongs to another cleanup operation.',409);return previous.response as unknown as ReturnType<typeof retentionJobDto>}
-   const known=await trx.selectFrom('retention_jobs').select(['plan_id','artifact_id']).where('id','=',jobId).executeTakeFirst()
+   const known=await trx.selectFrom('retention_jobs').select(['plan_id','artifact_id','kind']).where('id','=',jobId).executeTakeFirst()
    if(!known)throw new AppError('NOT_FOUND','Cleanup job not found.',404)
+   if(known.kind==='manual'||!known.plan_id)throw new AppError('MANUAL_DELETION_RETRY_FORBIDDEN','An explicit snapshot deletion has no automatic or policy retry. Preserve its reservation and inspect the uncertain outcome.',409)
    const plan=await trx.selectFrom('plans').selectAll().where('id','=',known.plan_id).forUpdate().executeTakeFirstOrThrow()
    await trx.selectFrom('artifacts').select('id').where('id','=',known.artifact_id).forUpdate().execute()
    const job=await trx.selectFrom('retention_jobs').selectAll().where('id','=',jobId).forUpdate().executeTakeFirstOrThrow()

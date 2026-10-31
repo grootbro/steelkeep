@@ -6,7 +6,7 @@ export const retentionCommandId=(command:Pick<RetentionCommand,'kind'|'id'>)=>`$
 
 /** These service refusals are checked only after the original key lookup, so they prove no matching command was accepted. */
 export function retentionRequestWasRejected(error:{status:number;code?:string}){
-  const statuses:Record<string,number>={NOT_FOUND:404,REVISION_CONFLICT:409,RETENTION_DISABLED:409,RETENTION_NOT_ELIGIBLE:409,RETENTION_RETRY_NOT_READY:409,RETENTION_SCAN_LIMIT:409}
+  const statuses:Record<string,number>={NOT_FOUND:404,REVISION_CONFLICT:409,RETENTION_DISABLED:409,RETENTION_NOT_ELIGIBLE:409,RETENTION_RETRY_NOT_READY:409,RETENTION_SCAN_LIMIT:409,MANUAL_DELETION_RETRY_FORBIDDEN:409}
   return error.code!==undefined&&statuses[error.code]===error.status
 }
 

@@ -4,7 +4,7 @@
 
 Local Docker and the preview are stopped at the owner's request. Disposable local dependencies/build output were removed; source, lockfile, database/artifact volumes, secrets and proof evidence were preserved. All subsequent application execution and verification use isolated, limited server stands with reusable images.
 
-Owner setup/sign-in, the original PNG branding and the Databasement operational dashboard are implemented. The latest combined checkpoint includes the remaining-screen redesign, full plan browsing API/MCP and scoped native archive downloads. Both TypeScript checks, 84 default tests / 693 assertions, actual plan metadata and S3/HTTP transfer proofs passed on the documented server snapshots; 46 targeted UI cases passed separately. See the acceptance ledger for exact source pins and proof boundaries. Full Databasement functional parity and production acceptance remain open.
+Owner setup/sign-in, the original PNG branding and the Databasement operational dashboard are implemented. The latest combined checkpoint includes the remaining-screen redesign, full plan browsing API/MCP and scoped native archive downloads. Both TypeScript checks, 90 default tests / 755 assertions, actual plan metadata and S3/HTTP transfer proofs passed on the documented server snapshots; 46 earlier operational UI cases and26plan/deletion plus2outcome-navigation cases passed separately. See the acceptance ledger for exact source pins and proof boundaries. Full Databasement functional parity and production acceptance remain open.
 
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
 
@@ -21,7 +21,7 @@ An earlier current-source checkpoint: the new owner flow and forms passed a real
 - Safe restore review into a precreated, separate, empty destination; no source overwrite.
 - Shared REST/OpenAPI and native MCP operations with scoped access.
 - Explicit S3 availability checks with cached check times; full downloaded-byte verification during restore.
-- Native archive downloads with separate `backup:download` permission, bounded streaming and complete SHA-256 checks; snapshot notes and full-history metadata browsing.
+- Native archive downloads with separate `backup:download` permission, bounded streaming and complete SHA-256 checks; snapshot notes, reviewed single/bulk deletion and full-history metadata browsing.
 - Databasement-inspired operational dashboard, dense history, charts and original Steelkeep details.
 
 Required engine scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server.

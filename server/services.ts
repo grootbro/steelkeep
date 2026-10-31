@@ -21,6 +21,7 @@ import {NotificationServices} from './notifications'
 import {ConnectionHistoryServices} from './connection-history'
 import {ArtifactCommentServices} from './artifact-comments'
 import {ArtifactDownloadServices,type DownloadOpen} from './artifact-downloads'
+import {ArtifactDeletionServices} from './artifact-deletions'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
 
 export {engineProfiles} from '../shared/engines'
@@ -35,9 +36,9 @@ export function databaseClient(c:DatabaseConfig,s:DbSecret){
   allowedHost(c.host)
   return new pg.Client({host:c.host,port:c.port,database:c.database,user:c.user,password:s.password,ssl:c.tls?{rejectUnauthorized:true}:false,connectionTimeoutMillis:5000,statement_timeout:10000,query_timeout:12500})
 }
-export function storageClient(c:StorageConfig,s:S3Secret){
+export function storageClient(c:StorageConfig,s:S3Secret,maxAttempts:1|2=2){
   allowedHost(new URL(c.endpoint).hostname)
-  return new S3Client({endpoint:c.endpoint,region:c.region,forcePathStyle:true,credentials:{accessKeyId:s.accessKey,secretAccessKey:s.secretKey},maxAttempts:2})
+  return new S3Client({endpoint:c.endpoint,region:c.region,forcePathStyle:true,credentials:{accessKeyId:s.accessKey,secretAccessKey:s.secretKey},maxAttempts})
 }
 export function nextOccurrence(cron:string,timezone:string,after=new Date()):Date{
   try{
@@ -99,7 +100,8 @@ export class Services {
  readonly connectionHistory:ConnectionHistoryServices
  readonly artifactComments:ArtifactCommentServices
  readonly artifactDownloads:ArtifactDownloadServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
+ readonly artifactDeletions:ArtifactDeletionServices
+ constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDeletions=new ArtifactDeletionServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
  protected openArtifactDownload:DownloadOpen=async(artifact,signal)=>{
   const storage=await this.connection(artifact.storage_id)
   if(storage.kind!=='s3')throw new AppError('INVALID_STORAGE','Snapshot storage is not S3 compatible.')

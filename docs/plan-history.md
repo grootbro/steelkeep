@@ -9,3 +9,9 @@ The response extends each existing plan DTO with source/storage names and source
 Cursors are signed, domain-separated and bound to normalized filters, order and page size. Changing those inputs requires returning to the first page. Invalid cursors return `INVALID_PLAN_CURSOR`; unsupported filters return `INVALID_PLAN_FILTER`. No credentials, native execution token or connection secret is selected.
 
 The current synthetic PostgreSQL proof passed 184 assertions with 137 plans, all five orders including ties/null due dates, global versus filtered counts, search/filter binding, strict legacy-endpoint-before-page response validation and scoped REST/MCP reads. It did not queue backup jobs or contact native engines. The final checkpoint summary records its frozen source and adjacent checks.
+
+## Plans screen
+
+The capability-gated PlanBrowser now uses these cursor pages for visible cards while keeping existing complete plan/connection arrays for create/edit references. It supports all five orders and seven filter fields, explicit apply/clear, back/next cursor history and first-page recovery. Actor and normalized grant-set changes partition queries and reset the cursor chain. Matching totals and installation-wide summaries remain visibly distinct; original run request-key recovery, edit, retention and schedule-history actions are reused. Older servers keep the complete-array UI fallback.
+
+The server-rendered desktop/mobile light/dark browser proof passed the paging/order/filter/cursor/scope cases as part of the 26-scenario manual-deletion/Plans checkpoint. This is intercepted UI evidence; the earlier 137-plan actual PostgreSQL/REST/MCP test independently qualifies backend browsing.

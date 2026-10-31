@@ -6,6 +6,8 @@ The owner expanded the objective to a complete platform on 31 October. Read GOAL
 
 ## Current user instructions (31 October 2026, take priority)
 
+- Latest owner authorization: deploy an accessible HTTPS installation on the server and provide a private first-owner link so the owner can inspect the interface and try their first backup. Keep this installation separate from synthetic stands and existing services. Actual user database connections require owner-specified targets; local execution remains suspended.
+
 - **Latest owner override:** stop Docker Desktop and local development processes, clean this project's disposable files, and continue writing code locally. All further application runs, browsers, installs, builds, typechecks and test execution must happen on an isolated server stand. Do not restart local Docker/Vite or reinstall local dependencies without a new owner instruction. File reads/edits, Git and scoped cleanup remain local. Preserve database/artifact volumes, metadata/secrets, original brand assets and proof evidence. This supersedes the earlier local-preview/run authorization below.
 - The owner specifically requests a dedicated visual-design agent and close visual correspondence to Databasement, especially its dashboard and then the remaining screens. Inspect actual reference source/composition; keep Steelkeep's supplied PNG branding and improve polish without replacing the reference with a generic dashboard.
 
