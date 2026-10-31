@@ -1,25 +1,17 @@
 # Steelkeep
 
-## Local checkpoint · 31 October 2026
+## Current checkpoint · 31 October 2026
 
-Docker and the preview are running again. Host free space was13GiB at the latest check after the failed-build remnants, this checkout's six build-history records/cache references and obsolete worker image were removed. BuildKit reports0B cache. Four stopped extra-engine fixture containers/images were also removed after checking ownership and image users; their named data volumes remain intact. Both temporary authentication test databases were verified synthetic/empty of backup data and removed after successful checks. The preview reuses the existing worker image and runs UI edits through Vite; no new Docker image was built for this checkpoint. Database/artifact volumes and other projects were preserved.
+Local Docker and the preview are stopped at the owner's request. Disposable local dependencies/build output were removed; source, lockfile, database/artifact volumes, secrets and proof evidence were preserved. All subsequent application execution and verification use isolated, limited server stands with reusable images.
 
-Owner email/password authentication now replaces the daily installation-token form. Initial setup creates the owner only after installation ownership is verified; an existing setup session avoids another key entry. Sessions are opaque, hashed in metadata and revocable. The owner chooses their own name/email/password; automated checks never create a main-installation account. [Authentication](docs/authentication.md).
-
-Observed checks: unit32/216 assertions and API/MCP integration34/209; isolated auth unit/integration3/65 assertions; browser one-time setup-link/setup/login/logout/password revocation and six sections1/44 assertions in5.29s, including the final legacy-cookie refusal; read-only desktop/mobile light/dark rendering passed. A separate native scheduled backup passed1/53 assertions in22.45s with S3 SHA-256 and source SQL checks; its plan is paused. The earlier outage-created plan was separately disabled and had no jobs/occurrences. The scheduler lock-wait clock correction is implemented; that specific contention case is not runtime-qualified.
-
-The current auth/brand/cache-recipe changes are source/development evidence. The older clean packaged1/91 pass predates them. The new cache-mount recipe has not been rebuilt; this checkpoint deliberately avoids another packaging build.
-
+Owner setup/sign-in, the original PNG branding and the Databasement operational dashboard are implemented. The latest combined checkpoint includes the remaining-screen redesign, full plan browsing API/MCP and scoped native archive downloads. Both TypeScript checks, 84 default tests / 693 assertions, actual plan metadata and S3/HTTP transfer proofs passed on the documented server snapshots; 46 targeted UI cases passed separately. See the acceptance ledger for exact source pins and proof boundaries. Full Databasement functional parity and production acceptance remain open.
 
 Self-hosted database backup and recovery, built with TanStack Start and Elysia.
 
-**In development. Local preview address: [127.0.0.1:4310](http://127.0.0.1:4310).**
-Docker recovered after an owner-approved restart; existing fixture volumes were preserved.
-The authorized local review on 31 October 2026 has verified ordinary native recovery for
-seven engine profiles, plus build/typecheck and targeted tests. The full eight-engine
-acceptance goal remains open. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
+**In development. The local preview is currently stopped.**
+Ordinary native recovery has evidence for all eight required profiles across separately recorded frozen checkpoints. This does not qualify every adverse case, later source change or rebuilt image. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
 
-Latest current-source checkpoint: the new owner flow and forms passed a real isolated PostgreSQL UI backup/restore in16.9s; a separate scoped AI-agent MCP native backup passed34assertions in2.01s, including independent S3 bytes/SHA and revocation. Connections now explains retained recovery protection and links to its job. Unit group38/297; [proof boundaries and evidence](docs/current-source-ui-proof.md). No Docker image rebuild was needed.
+An earlier current-source checkpoint: the new owner flow and forms passed a real isolated PostgreSQL UI backup/restore in16.9s; a separate scoped AI-agent MCP native backup passed34assertions in2.01s, including independent S3 bytes/SHA and revocation. Connections now explains retained recovery protection and links to its job. Unit group38/297; [proof boundaries and evidence](docs/current-source-ui-proof.md). No Docker image rebuild was needed.
 
 ## Product
 
@@ -29,13 +21,14 @@ Latest current-source checkpoint: the new owner flow and forms passed a real iso
 - Safe restore review into a precreated, separate, empty destination; no source overwrite.
 - Shared REST/OpenAPI and native MCP operations with scoped access.
 - Explicit S3 availability checks with cached check times; full downloaded-byte verification during restore.
+- Native archive downloads with separate `backup:download` permission, bounded streaming and complete SHA-256 checks; snapshot notes and full-history metadata browsing.
 - Databasement-inspired operational dashboard, dense history, charts and original Steelkeep details.
 
 Required engine scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis, ClickHouse and SQL Server.
 Profiles, prerequisites and packaging gaps are explicit in [engine profiles](docs/engine-profiles.md).
 PostgreSQL 17 and MariaDB 11.4 have passed isolated native MCP recovery against the local fixtures.
 MongoDB 8.0.34, Redis 7.4.12, SQLite, MySQL 8.0.46 and ClickHouse 25.8.12 also passed
-isolated MCP recovery. SQL Server export/S3 GET/SHA passed on the authorized x64 stand; import remains interrupted and recovery unqualified. This is not a general production support claim.
+isolated MCP recovery. SQL Server 2022 CU23 / .NET 10.0.14 / DacFx 170.5.96.0 passed export, independent S3 GET/SHA and a fresh-target MCP restore with independent schema/data/identity and permission checks on the pinned x64 stand. Its original interrupted target remains quarantined. See [exact helper and backend pins](docs/mssql-helper-diagnostics.md). This is not a general production support claim.
 MySQL/MariaDB have distinct compatibility constraints. No PITR, cluster-wide backup, or business
 recovery guarantee is implied by a successful logical dump or a zero CLI exit code.
 
@@ -198,4 +191,4 @@ Snapshot cleanup is opt-in: [retention policies, permissions and qualified stora
 
 Full-history filters and older snapshots: [history API and UI](docs/history.md). Configure delivery separately: [notifications, scoped permissions and provider limits](docs/notifications.md).
 
-SQL Server now has a separately authorized x64 export/S3 SHA proof; import failed safely with its target reserved. See [current helper evidence](docs/mssql-helper-diagnostics.md). This does not qualify SQL Server recovery.
+SQL Server now has separately authorized x64 export/S3 SHA and fresh-target MCP recovery evidence, including a negative execution-gate proof and independent destination/security checks. The original failed-import target stays reserved. See [current helper evidence and exact source/binary pins](docs/mssql-helper-diagnostics.md); rebuilt images and later unrelated changes need their own qualification.

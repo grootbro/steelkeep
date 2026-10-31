@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import {realpath,stat} from 'node:fs/promises'
 import {isAbsolute,relative} from 'node:path'
-import { S3Client, HeadBucketCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, HeadBucketCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import {Readable} from 'node:stream'
+import type {ReadableStream as NodeReadableStream} from 'node:stream/web'
 import { CronExpressionParser } from 'cron-parser'
 import { sql, type Kysely, type Selectable } from 'kysely'
 import type { Schema } from './db'
@@ -18,6 +20,7 @@ import {RetentionServices,retainedPlanDto} from './retention'
 import {NotificationServices} from './notifications'
 import {ConnectionHistoryServices} from './connection-history'
 import {ArtifactCommentServices} from './artifact-comments'
+import {ArtifactDownloadServices,type DownloadOpen} from './artifact-downloads'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
 
 export {engineProfiles} from '../shared/engines'
@@ -95,7 +98,19 @@ export class Services {
  readonly notifications:NotificationServices
  readonly connectionHistory:ConnectionHistoryServices
  readonly artifactComments:ArtifactCommentServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db)}
+ readonly artifactDownloads:ArtifactDownloadServices
+ constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
+ protected openArtifactDownload:DownloadOpen=async(artifact,signal)=>{
+  const storage=await this.connection(artifact.storage_id)
+  if(storage.kind!=='s3')throw new AppError('INVALID_STORAGE','Snapshot storage is not S3 compatible.')
+  const settings=storage.config as StorageConfig,client=storageClient(settings,unseal<S3Secret>(storage.secret))
+  try{
+   const value=await client.send(new GetObjectCommand({Bucket:settings.bucket,Key:artifact.object_key}),{abortSignal:signal})
+   if(!value.Body||value.ContentRange){if(value.Body instanceof Readable)value.Body.destroy();client.destroy();throw new AppError('INVALID_DOWNLOAD','Storage did not return a complete archive.')}
+   const body=value.Body instanceof Readable?value.Body:Readable.fromWeb(value.Body.transformToWebStream() as unknown as NodeReadableStream<Uint8Array>)
+   return {length:value.ContentLength,body,close:()=>{body.destroy();client.destroy()}}
+  }catch(error){client.destroy();throw error}
+ }
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
   .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])

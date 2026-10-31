@@ -46,3 +46,15 @@ Notification inspection needs `read`; channel changes, real tests and retries ne
 that configured destination. Provider acceptance does not mean recipient delivery.
 An uncertain send must retain its identity and requires duplicate-risk confirmation
 before an explicit retry. Use delivery details to report earlier attempt failures.
+
+Archive downloads require the separate `backup:download` grant; ordinary `read`
+access does not expose database contents. Existing agent tokens are not upgraded.
+Use `get_backup_download` to obtain a relative authenticated path, filename,
+recorded size and SHA-256. Fetch that path from this installation with the same
+credential in its Authorization header. Never put a token in the URL or forward
+it to a storage host. MCP does not return archive bytes or a presigned URL.
+
+Download complete archives only; ranges/resume are unsupported. Size and the
+complete SHA-256 must agree before the final block is sent. Discard an incomplete
+or failed transfer and restart it. Independently compare the saved file's SHA-256
+with the descriptor before using it. Downloads are not restore validation.

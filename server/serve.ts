@@ -11,8 +11,9 @@ const {default:start}=await import(pathToFileURL(resolve('dist/server/server.js'
 const {db}=connectDb(),api=createApp(new Services(db)),log=pino({name:'steelkeep'})
 const server=Bun.serve({
   hostname:process.env.HOST??'127.0.0.1',port:Number(process.env.PORT??4310),maxRequestBodySize:65536,
-  async fetch(request){
+  async fetch(request,listener){
     const url=new URL(request.url)
+    if(request.method==='GET'&&/^\/api\/v1\/backups\/[a-f0-9-]+\/download$/.test(url.pathname))listener.timeout(request,60)
     if(url.pathname.startsWith('/api/')||url.pathname==='/mcp'||url.pathname.startsWith('/openapi'))return api.handle(request)
     if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405,headers:{Allow:'GET, HEAD'}})
     let pathname:string

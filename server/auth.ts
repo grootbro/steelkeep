@@ -5,9 +5,9 @@ import type {Schema} from './db'
 import {config} from './config'
 import {AppError,tokenMatches} from './security'
 
-export const allScopes=['read','configure','backup:run','restore:run','jobs:cancel','agents:manage','backup:delete'] as const
+export const allScopes=['read','configure','backup:run','restore:run','jobs:cancel','agents:manage','backup:delete','backup:download'] as const
 export type Scope=typeof allScopes[number]
-const legacyScopes:readonly Scope[]=allScopes.filter(scope=>scope!=='agents:manage'&&scope!=='backup:delete')
+const legacyScopes:readonly Scope[]=allScopes.filter(scope=>!['agents:manage','backup:delete','backup:download'].includes(scope))
 export type Principal={actor:string;scopes:readonly Scope[];tokenId?:string;expiresAt?:Date;credentialKind?:"installation"|"legacy"|"agent"|"owner";credentialHash?:string;sessionId?:string;ownerId?:string;authVersion?:number}
 export function authorize(principal:Principal,scope:Scope){if(!principal.scopes.includes(scope))throw new AppError('FORBIDDEN','This token is not permitted to perform this operation.',403)}
 export const tokenHash=(token:string)=>createHash('sha256').update(token).digest('hex')
@@ -43,7 +43,7 @@ export async function authenticateRequest(request:Request,db?:Kysely<Schema>):Pr
    const principal:Principal={actor:session.actor,scopes:session.scopes,sessionId:session.id,expiresAt:new Date(session.expires_at),credentialKind:session.issuer_kind,credentialHash:session.issuer_hash??undefined}
    if(session.issuer_kind==='owner'){
     const account=await db.selectFrom('owner_account').select(['id','auth_version']).where('id','=',session.owner_id!).executeTakeFirst()
-    if(account&&account.auth_version===session.auth_version)return {...principal,ownerId:account.id,authVersion:account.auth_version}
+    if(account&&account.auth_version===session.auth_version)return {...principal,scopes:allScopes,ownerId:account.id,authVersion:account.auth_version}
    }else if(session.issuer_kind==='installation'&&session.issuer_hash===tokenHash(owner))return {...principal,scopes:session.scopes.filter(scope=>allScopes.includes(scope))}
    else if(session.issuer_kind==='legacy'){
     const issuer=tokens.find(token=>tokenHash(token.token)===session.issuer_hash&&token.actor===session.actor)

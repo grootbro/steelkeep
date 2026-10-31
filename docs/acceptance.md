@@ -31,9 +31,7 @@ The primary executor then observed these passing current runs:
 - Unit suite:26 tests / 154 assertions.
 
 Together with the recorded MongoDB/Redis/SQLite runs, seven ordinary native profiles now
-have recovery evidence. SQL Server subsequently ran on the separately authorized A-server x64 stand with EULA
-acceptance: BACPAC export and independent stored-byte SHA passed, but import failed and
-remains interrupted/protected. Full SQL Server recovery is not qualified.
+have recovery evidence. SQL Server subsequently passed BACPAC export, independent S3 SHA and fresh-target MCP recovery on the separately authorized A-server x64 stand with EULA acceptance. Independent schema/data/identity and destination/server security checks passed. The original interrupted target remains protected; exact helper/adapter/base pins and preserved failure results are in [diagnostics](mssql-helper-diagnostics.md). These are ordinary-profile proofs, not the complete adverse-case or packaging matrix.
 The corrected transient-S3 retry acceptance passed 1 test / 21 assertions in 14.70s:
 only its own RustFS container was stopped and restarted with the same container ID.
 The actual PostgreSQL job recorded attempt 1 STORAGE_UNAVAILABLE/retry_wait with no
@@ -179,7 +177,7 @@ assertions alone were not counted as execution.
 | SQLite | Online/WAL snapshot, implicit rowids, identity/FK checks, path/symlink/hardlink guards | Linux-writer live-WAL MCP recovery, rowids, identity/FK and hard-link refusal passed; broader fault/path matrix pending |
 | Redis | Atomic DUMP capture, binary keys/types/streams, absolute TTL including expiry; no FLUSH/REPLACE | 7.4.12 native MCP recovery passed including binary keys/types and exact expiry; Redis8/fault matrix pending |
 | ClickHouse | Native disk archive, shared spool, ASYNC reconciliation and independent data checks | ClickHouse 25.8.12 native MCP passed 1 test / 20 assertions; native uncertainty/fault/UI matrix pending |
-| SQL Server | Supported physical Linux x64 helper, read-only source BACPAC, empty target import and independent validation | SQL Server 2022 CU23 / .NET 10.0.14 / DacFx 170.5.96: read-only manifest and native export/S3 GET/SHA passed; import interrupted/MSSQL_HELPER_IMPORT, target reserved; recovery unqualified |
+| SQL Server | Supported physical Linux x64 helper, read-only source BACPAC, empty target import and independent validation | SQL Server 2022 CU23 / .NET 10.0.14 / DacFx 170.5.96.0: export/S3 SHA + fresh-target MCP restore and independent schema/data/identity/security checks passed; required-contributor negative native gate passed. Frozen backend680c7ad + helperdf38390/adapter315e0d9 only; old interrupted target remains reserved; broader adverse/image matrix pending |
 | AI-agent access | Scope denial, expiry, delegation/revocation, audit, UI and MCP management | Targeted metadata/API/MCP tests and real browser issuance/scope/revocation workflow passed; broader delegation/expiry cases pending |
 | Durable jobs | Kill/restart on dump/upload/commit boundaries; no lost job, false success or restore replay | Ordinary jobs, selected dump/restore cancellation/SIGKILL/restart quarantine and permanent S3 refusals passed; actual storage retry passed; full boundary/partial-write matrix pending |
 | Schedules | Timezone/DST/missed/overlap and unique occurrence under concurrency | Relevant unit/integration cases passed; real scheduled native execution pending |
@@ -189,7 +187,7 @@ assertions alone were not counted as execution.
 | Target protection | Source aliases, metadata, nonempty/unknown target, version and privilege failures | MCP occupied-target refusal and targeted cases passed; full refusal matrix pending |
 | Retries/cancellation | Safe bounded retries, confirmed process-group stop, partial target retained | Selected cancellation/SIGKILL/quarantine, permanent S3 refusals and real attempt-2 storage retry passed; full late-result/partial-write matrix pending |
 | REST/OpenAPI | Actual schema correspondence, auth, errors and stable operation IDs | Targeted integration/Scalar render and separate ARM64 packaged UI/API/MCP PG/Maria proof passed; latest mobile CSS image pending |
-| MCP | Official-client discovery, same native flow, scope denial and idempotency | Seven ordinary native engine profiles passed; MSSQL and broader adverse matrices pending |
+| MCP | Official-client discovery, same native flow, scope denial and idempotency | Eight ordinary native profiles have recovery evidence at their recorded pins; broader adverse/current-image matrices pending |
 | Self-hosted delivery | Clean isolated Compose, packaged single-origin UI/API/MCP and separate immutable worker | Clean ARM64 no-source-bind installation passed 1 / 91 for PG/Maria; latest mobile CSS image and other engine/architecture coverage pending |
 | No collateral changes | Preserve data/volumes; no production, deployment, publication or paid services | Local synthetic scope retained |
 
@@ -228,7 +226,7 @@ isolated. Harness/admin setup precreates test targets; restore does not create o
 - `compose.mysql-fixture.yaml` and `acceptance/mysql8-recovery.test.ts`: MySQL 8.0.46 independent
   native recovery passed 1 / 63; packaging alone was not counted as execution.
 - `compose.mssql-fixture.yaml`, `acceptance/mssql-recovery.test.ts` and `Dockerfile.mssql`:
-  optional provisioned SQL Server profile remains unrun, including restricted-source export.
+  original test remains a historical failed-import checkpoint. Separate one-shot policy-negative and policy-positive MCP harnesses subsequently proved the pinned corrected profile; results and original quarantined target are preserved in [diagnostics](mssql-helper-diagnostics.md).
 - `Dockerfile.engines`: ARM64 build and clean no-source-bind PG/Maria packaged proof passed; other
   architecture/profile matrices and latest mobile CSS packaged rerun remain outstanding.
 
@@ -286,3 +284,11 @@ Schema 9 is integrated in the main source-mounted runtime without an image build
 Notification backend agent proof: dedicated schema-9 PostgreSQL, 11 actual loopback HTTP and 3 SMTP sends, 1 test / 94 assertions; no external providers. Stalled SMTP cancellation was additionally qualified against a real socket. UI CRUD/CAS/secret/retry/attempt-history checks were intercepted and remain separate from actual delivery proof. Real provider accounts/SMTP TLS remain unqualified; channels are global. See [notifications](notifications.md).
 
 Root full-history proof: 1 test / 166 assertions with 107 records, exact timestamp ties, filtered cursor pagination, old-artifact validation, real Elysia routes and official scoped MCP read tools. Dedicated database and temporary keys removed. Intercepted actual-workspace UI test / 8 assertions validates paging/filter reset/local DST date boundaries/mobile/held older snapshot refusal. See [history](history.md). Default unit group: 69 tests / 520 assertions, both TypeScript configurations passed at this checkpoint.
+
+## Server-only operations/download/plan checkpoint
+
+Full TypeScript passed on frozen `e9bda888b8cfdbdc073d1e1b101053460faf0aa3f3b55f7d65e81f6412eed34d`. Acceptance TypeScript, 84 default tests / 693 assertions and the actual synthetic plan PostgreSQL test (137 plans / 184 assertions) passed on `85d3a5e2b8a0379c19c7916102637bf8aa158b2a19b5dff9255d8b3985e6b5db`; intervening edits were two CSS files and optional getuid typing in two proof-only scripts. The actual fresh S3/HTTP download proof passed 53 assertions on `ab62e19bd27809014143b9604af533c1f60bd5c5651633150905133c84290f86`; its only further edit was accepting the pinned Bun runtime's observed chunked framing in the test, preserving exact bytes/SHA and corrupt-stream rejection. No product contract was weakened. All 271 manifest files were verified; root read final summaries and raw passing logs.
+
+The 46-case remaining-screen browser proof is separate intercepted-fixture evidence. Full native SQL Server recovery is separately pinned to the helper/adapter/frozen backend in docs/mssql-helper-diagnostics.md; root independently queried actual persisted succeeded/validated job, exact phases, old quarantine and new target reservation. These checks do not qualify a rebuilt immutable image or the full adverse-case matrix.
+
+Temporary metadata databases and fresh S3 buckets were independently absent after guarded cleanup. Own PostgreSQL/RustFS and browser containers were stopped/removed, volumes/evidence preserved. No local application runs, image rebuilds, new dependencies, production services or existing storage objects were touched. Exact final stand summary: `/opt/steelkeep-platform-checks-20261031/private/platform-download-plan-final-summary.json`.

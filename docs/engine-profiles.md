@@ -2,19 +2,17 @@
 
 Current source scope is PostgreSQL, MySQL, MariaDB, MongoDB, SQLite, Redis,
 ClickHouse and SQL Server, plus S3-compatible artifact storage. All eight profiles
-have explicit acceptance gates. Local review is now authorized: PostgreSQL 17 and
+have explicit acceptance gates. Historical authorized local review proved: PostgreSQL 17 and
 MariaDB 11 passed MCP and UI recovery; MongoDB 8.0.34, Redis 7.4.12 and SQLite passed
 MCP recovery. MySQL 8.0.46 passed 1 test / 63 assertions and ClickHouse 25.8.12
 passed 1 test / 20 assertions through native MCP after Docker recovery. On the separately
-authorized A-server stand, SQL Server 2022 exported a real BACPAC and passed independent
-S3 GET/SHA verification. Import failed and remains interrupted with its target blocked;
-SQL Server recovery is not qualified. A form option or
+authorized A-server stand, SQL Server 2022 CU23 / .NET 10.0.14 / DacFx 170.5.96.0 exported a real BACPAC and passed independent S3 GET/SHA plus a fresh-target native MCP restore. Independent administrative queries confirmed schema/data/identity values and preserved destination/server permissions; a negative Import callback proof confirmed refusal before changes. The original interrupted target remains quarantined. Exact frozen backend/helper/adapter pins are in [helper diagnostics](mssql-helper-diagnostics.md). All current execution is server-only under the latest owner instruction. A form option or
 ordinary recovery pass does not establish arbitrary-schema or production support.
 See the [acceptance ledger](acceptance.md) for remaining adverse-case and packaging gates.
 
 The shared machine-readable profile catalog is `shared/engines.ts`, returned by
 REST and MCP. Native commands run only in the worker; connection tests and restore
-reviews inspect destinations through database drivers. One operation runs at a
+reviews inspect destinations through database drivers. One native backup/restore operation runs at a
 time per installation. Only installation-created trusted archives can be restored.
 Archive budget: 2 GiB. Manifest budget: 2 MiB. Profile-specific limits can be lower.
 
@@ -61,8 +59,7 @@ Source: `tools/Steelkeep.DacFx`. Its project pins Microsoft.SqlServer.DacFx 170.
 The owning operator must provision a supported Linux x64 .NET 10 environment and
 review the actual Microsoft package terms. Initial authoring did not execute the helper;
 the later checkpoint compiled and ran it on the isolated Linux x64 stand. Read-only
-manifest, long JSON handling, export and independent stored bytes were checked; import
-failed and full recovery remains unqualified. See [helper diagnostics](mssql-helper-diagnostics.md). The application's MIT license does not relicense Microsoft binaries.
+manifest, long JSON handling, export, independent stored bytes and a fresh-target MCP import/validation were checked. The original failed-import target remains protected; the corrected required contributor passed both a negative native gate and independent successful-recovery checks. See [helper diagnostics](mssql-helper-diagnostics.md). The application's MIT license does not relicense Microsoft binaries.
 
 During the later authorized build phase, publish the helper to a protected worker
 directory and set `STEELKEEP_DACFX_HELPER` to its absolute `Steelkeep.DacFx.dll` path.
@@ -81,8 +78,7 @@ Primary contracts: [DacServices export](https://learn.microsoft.com/en-us/dotnet
 [existing empty target](https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-import?view=sql-server-ver17),
 [actual package license](https://www.nuget.org/packages/Microsoft.SqlServer.DacFx/170.5.96/License).
 The API documentation currently describes an earlier assembly generation. Source
-compatibility compiled at the recorded native-tooling checkpoint; database export/import
-behavior still needs the real SQL Server acceptance run.
+compatibility and actual export/import behavior were checked on the precisely pinned SQL Server 2022 stand described above; this does not qualify SQL Server 2019, arbitrary schemas, later binaries or adverse import boundaries.
 
 ## Source-lock reconciliation
 

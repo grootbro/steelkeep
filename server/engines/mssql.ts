@@ -6,7 +6,7 @@ import type {AdapterOptions,EngineAdapter,Identity,Manifest} from './types'
 import {AppError,allowedHost,databaseName} from '../security'
 import {assertArchiveSize,maxArchiveBytes,runTool,toolEnv} from '../process'
 
-type Inspection={identity:Identity;empty:boolean;restricted:boolean;manifest?:Manifest;toolVersion:string;packageVersion?:string}
+type Inspection={identity:Identity;empty:boolean;restricted:boolean;manifest?:Manifest;toolVersion:string;packageVersion?:string;importPolicy?:string|null}
 
 const helperFailures={
   request:'The SQL Server helper refused its input or execution platform.',
@@ -24,10 +24,14 @@ const helperFailures={
 
   export:'The SQL Server BACPAC export failed; no successful archive is implied.',
   import:'The SQL Server BACPAC import failed; its target remains protected until reviewed.',
+  import_policy:'SQL Server refused an unverified application-data import policy; its target remains protected.',
+  import_model:'The SQL Server archive does not satisfy the application-schema ownership policy.',
+  import_plan:'The SQL Server deployment plan could not pass its required security boundary.',
+  import_guard:'The SQL Server deployment policy receipt could not be verified; its target remains protected.',
   runtime:'The SQL Server helper could not verify its pinned DacFx runtime.'
 } as const
 
-export function parseMssqlHelperResponse(output:string,database:string):Inspection {
+export function parseMssqlHelperResponse(output:string,database:string,requiresImportPolicy=false):Inspection {
   let result:Inspection&{error?:{code?:unknown;stage?:unknown}}
   try{result=JSON.parse(output)}catch{throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid result.')}
   if(!result||typeof result!=='object')throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid result.')
@@ -35,8 +39,9 @@ export function parseMssqlHelperResponse(output:string,database:string):Inspecti
     const stage=result.error.stage as keyof typeof helperFailures
     throw new AppError('MSSQL_HELPER_'+stage.toUpperCase(),helperFailures[stage])
   }
-  if(result.error)throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid failure result.')
+  if(Object.hasOwn(result,'error'))throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper returned an invalid failure result.')
   if(result.identity?.engine!=='mssql'||result.identity.database!==database||typeof result.empty!=='boolean'||typeof result.restricted!=='boolean'||result.packageVersion!=='170.5.96'||typeof result.toolVersion!=='string'||!/^DacFx 170\.[0-9.]+$/.test(result.toolVersion))throw new AppError('INVALID_TOOL_RESPONSE','The SQL Server helper identity or actual runtime version could not be verified.')
+  if(requiresImportPolicy&&result.importPolicy!=='application-schema-data-v1')throw new AppError('IMPORT_POLICY_UNVERIFIED','The SQL Server import policy could not be verified; its target remains protected.')
   return result
 }
 
@@ -69,7 +74,7 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
     if(!row||row.database!==database||![15,16].includes(row.major))throw new AppError('UNSUPPORTED_VERSION','This SQL Server profile requires a verified SQL Server 2019 or 2022 database identity.')
     return {identity:{engine:'mssql',database,serverVersion:row.serverVersion,binding:row.serverName+':'+database},empty:row.empty===1,restricted:config.restoreTarget===true&&row.restricted===1,toolVersion}
   }
-  async function call(mode:'inspect'|'manifest'|'export'|'import',file?:string):Promise<Inspection>{
+  async function call(mode:'inspect'|'manifest'|'export'|'plan'|'import',file?:string):Promise<Inspection>{
     if(signal.aborted)throw new AppError('CANCELLED','Operation cancelled.')
     const configured=process.env.STEELKEEP_DACFX_HELPER
     if(!configured||!isAbsolute(configured)||!configured.endsWith('.dll'))throw new AppError('ENGINE_PROFILE_REQUIRED','SQL Server needs the explicitly provisioned Linux x64 DacFx helper. See docs/engine-profiles.md.')
@@ -78,8 +83,8 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
     const dir=await mkdtemp(join(tmpdir(),'steelkeep-dacfx-')),request=join(dir,'request.json')
     try{
       await writeFile(request,JSON.stringify({mode,host:config.host,port:config.port,database,user:config.user,password:secret.password,tls:config.tls===true,restoreTarget:config.restoreTarget===true,file}),{mode:0o600,flag:'wx'})
-      const output=await runTool('dotnet',[helper],{signal,env:toolEnv({DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_CLI_HOME:dir,DOTNET_NOLOGO:'1',DOTNET_EnableDiagnostics:'0'}),stdinFile:request,capture:true,captureLimitBytes:2*1024*1024,timeoutMs:mode==='inspect'?60000:2*60*60*1000})
-      const result=parseMssqlHelperResponse(output,database)
+      const output=await runTool('dotnet',[helper],{signal,env:toolEnv({DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_CLI_HOME:dir,DOTNET_NOLOGO:'1',DOTNET_EnableDiagnostics:'0'}),stdinFile:request,capture:true,captureLimitBytes:2*1024*1024,timeoutMs:mode==='inspect'?60000:mode==='plan'?120000:2*60*60*1000})
+      const result=parseMssqlHelperResponse(output,database,mode==='import'||mode==='plan')
       toolVersion=result.toolVersion
       return result
     }finally{await rm(dir,{recursive:true,force:true})}
@@ -110,6 +115,9 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
       await adapter.restrictedRestoreRole()
       if(!await adapter.empty())throw new AppError('TARGET_NOT_EMPTY','SQL Server requires a precreated empty target.')
       await assertArchiveSize(file);await options.checkpoint?.()
+      // A real read-only SDK plan and fresh receipt gate old helpers or unavailable policy contributors before writes.
+      await call('plan',file)
+      await options.checkpoint?.()
       // The helper rechecks emptiness and role immediately before DacFx import.
       // Cancellation cannot establish the server-side import outcome; the domain target reservation is retained.
       await call('import',file)

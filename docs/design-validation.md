@@ -14,3 +14,11 @@ Application execution took place on the isolated A-server stand. Mac Docker and 
 - Both TypeScript configurations, 78 default tests / 612 assertions, and the two synthetic PostgreSQL integration proofs passed on the final snapshot. These tests qualify their specific logic and metadata contracts; they do not qualify native engine recovery.
 
 Selected PNGs and provenance are under `output/playwright/server-design-20261031/`. Root visually inspected current light/dark desktop dashboards, the corrected desktop connection table, mobile dashboard/connections and compact auth screens. Browser rendering and intercepted actions cannot establish an actual backup, restore, notification delivery or note save through the browser. MSSQL helper changes were excluded from these frozen snapshots and remain separately qualified.
+
+## Remaining operational screens
+
+The next source slice adds what/where/when plan summaries, Configuration section tabs that preserve drafts, shared recent/full-history snapshot and operation tables, native scoped Download links and a log-first job inspection view with metadata disclosure. The reference file additions are attributed in THIRD-PARTY-NOTICES.md.
+
+Snapshot `2690d89ca7f91d82b5fe900c9d203a9c985aa2301e37b675405df85f49c7d0a1` passed 44 targeted cases: 16 desktop/mobile base captures in both themes plus tab keyboard/draft preservation, history dates/advanced filters/cursor recovery, job states/validation/long logs and Download capability/scope/state gates. All 55 frontend source files match backend-corrected snapshot `e9bda888…`. A two-CSS-file mobile correction, snapshot `a38d5f3929a5545a7fd37fb36cdebed4be7c685a3f7645755e074c66840066e4`, passed two affected captures with populated agent/audit and profile-job rows: all tables fit their 362px containers.
+
+Across 46 cases: no page/asset errors, missing images/fonts, document horizontal overflow, unknown API reads or API writes. The visual mock denied actual archive GETs; real archive transfer is separately qualified in docs/snapshot-downloads.md. Root inspected Plans, Snapshots, Configuration, interrupted JobInspection and the corrected mobile agent/audit/profile screens. Selected PNGs and provenance are in `output/playwright/server-operations-20261031/` (1.8 MiB). Browser containers were removed; no local application execution occurred.

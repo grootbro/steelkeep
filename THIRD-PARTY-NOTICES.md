@@ -16,6 +16,12 @@ are adapted from its retention action, rewritten in TypeScript. Source commit:
 - resources/views/livewire/dashboard/job-status-grid.blade.php
 - resources/views/livewire/dashboard/storage-distribution-chart.blade.php
 - resources/views/livewire/database-server/show.blade.php (profile composition, rewritten in React)
+- resources/views/livewire/database-server/_backup-form.blade.php (plan summary and configuration hierarchy)
+- resources/views/livewire/configuration/_tabs.blade.php
+- resources/views/components/configuration-header.blade.php
+- resources/views/livewire/snapshot/index.blade.php
+- resources/views/livewire/snapshot/_filters.blade.php
+- resources/views/partials/job-logs-modal.blade.php (operation detail hierarchy)
 - app/Actions/Snapshot/ApplyRetentionPoliciesAction.php (latest-N/GFS selection semantics)
 
 Upstream: https://github.com/David-Crty/databasement
