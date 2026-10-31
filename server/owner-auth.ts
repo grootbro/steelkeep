@@ -4,6 +4,7 @@ import type {Schema} from './db'
 import {allScopes,authenticateRequest,requestCredentials,tokenHash,type Principal,type Scope} from './auth'
 import {AppError} from './security'
 import {audit} from './agents'
+import {config} from './config'
 
 export async function migrateOwnerAuth(db:Kysely<Schema>){
  await sql`CREATE TABLE owner_account(singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),id uuid UNIQUE NOT NULL,name text NOT NULL,email text UNIQUE NOT NULL,password_hash text NOT NULL,auth_version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now())`.execute(db)
@@ -18,6 +19,8 @@ export function normalizeOwnerEmail(value:string){
 }
 export function validateOwnerPassword(value:string){if(typeof value!=='string'||value.length<12||value.length>128)throw new AppError('INVALID_INPUT','Use a password between 12 and 128 characters.',422)}
 const invalid=()=>new AppError('INVALID_CREDENTIALS','Email or password is incorrect.',401)
+const invalidSetupLink=()=>new AppError('INVALID_SETUP_LINK','This setup link is invalid or expired. Generate a new link on your server.',401)
+const setupLinkActor='installation-setup-link',setupSessionActor='installation-setup'
 const limited=()=>new AppError('AUTH_RATE_LIMITED','Too many sign-in attempts. Wait a minute and try again.',429)
 const windows=new Map<string,{count:number;until:number}>()
 let hashSlots=0,dummyHash:Promise<string>|undefined
@@ -39,6 +42,7 @@ export class OwnerAuth {
   const owner=await this.db.selectFrom('owner_account').select(['id','name','email']).executeTakeFirst()
   let principal:Principal|undefined
   try{principal=await authenticateRequest(request,this.db)}catch(error){if(!(error instanceof AppError&&error.status===401))throw error}
+  if(principal?.credentialKind==='installation'&&(principal.actor===setupLinkActor||owner&&principal.actor===setupSessionActor))principal=undefined
   return {setupRequired:!owner,authenticated:!!principal,user:owner&&principal?.ownerId===owner.id?publicUser(owner):null,bootstrapAuthorized:principal?.credentialKind==='installation'}
  }
  private async mint(db:Kysely<Schema>,principal:Principal,user:User|null){
@@ -48,9 +52,34 @@ export class OwnerAuth {
   return {token,response:{user,actor:principal.actor,scopes:[...principal.scopes],expiresAt:expiresAt.toISOString()}}
  }
  async exchange(principal:Principal){return this.mint(this.db,principal,null)}
+ async issueSetupLink(request:Request){
+  if(!requestCredentials(request).bearer)throw new AppError('BOOTSTRAP_REQUIRED','Use the installation bearer key to generate a setup link.',403)
+  return this.db.transaction().execute(async trx=>{
+   await sql`SELECT pg_advisory_xact_lock(4356542,7)`.execute(trx)
+   const principal=await authenticateRequest(request,trx)
+   if(principal.credentialKind!=='installation'||principal.sessionId)throw new AppError('BOOTSTRAP_REQUIRED','Use the installation bearer key to generate a setup link.',403)
+   if(await trx.selectFrom('owner_account').select('id').executeTakeFirst())throw new AppError('SETUP_COMPLETE','This installation already has an owner. Sign in with email and password.',409)
+   const session=await this.mint(trx,{...principal,actor:setupLinkActor,scopes:[],expiresAt:new Date(Date.now()+300000)},null)
+   await audit(trx,'installation-owner','owner.setup_link.issued',null)
+   return {code:session.token,expiresAt:session.response.expiresAt}
+  })
+ }
+ async claimSetupLink(code:string){
+  if(typeof code!=='string'||!/^ss_[a-f0-9]{64}$/.test(code))throw invalidSetupLink()
+  return this.db.transaction().execute(async trx=>{
+   await sql`SELECT pg_advisory_xact_lock(4356542,7)`.execute(trx)
+   if(await trx.selectFrom('owner_account').select('id').executeTakeFirst())throw invalidSetupLink()
+   const session=await trx.selectFrom('browser_sessions').selectAll().where('token_hash','=',tokenHash(code)).where('revoked_at','is',null).where('expires_at','>',sql<Date>`clock_timestamp()`).forUpdate().executeTakeFirst()
+   if(!session||session.issuer_kind!=='installation'||session.actor!==setupLinkActor||session.issuer_hash!==tokenHash(config.token())||session.owner_id!==null||session.scopes.length!==0)throw invalidSetupLink()
+   await trx.updateTable('browser_sessions').set({revoked_at:sql`clock_timestamp()`}).where('id','=',session.id).execute()
+   const claimed=await this.mint(trx,{actor:setupSessionActor,scopes:[],credentialKind:'installation',credentialHash:session.issuer_hash,expiresAt:new Date(Date.now()+300000)},null)
+   await audit(trx,setupSessionActor,'owner.setup_link.claimed',session.id)
+   return {token:claimed.token,response:{expiresAt:claimed.response.expiresAt}}
+  })
+ }
  async setup(request:Request,input:{name:string;email:string;password:string}){
   const principal=await authenticateRequest(request,this.db)
-  if(principal.credentialKind!=='installation')throw new AppError('BOOTSTRAP_REQUIRED','Use the local installation setup key to claim this installation.',403)
+  if(principal.credentialKind!=='installation'||principal.actor===setupLinkActor)throw new AppError('BOOTSTRAP_REQUIRED','Use the local installation setup key to claim this installation.',403)
   const email=normalizeOwnerEmail(input.email);validateOwnerPassword(input.password)
   if(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>80)throw new AppError('INVALID_INPUT','Enter a name between 1 and 80 characters.',422)
   throttle(email)

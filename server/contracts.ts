@@ -60,3 +60,6 @@ export const ownerStatusResponse=t.Object({setupRequired:t.Boolean(),authenticat
 export const ownerSetupInput=t.Object({name:t.String({minLength:1,maxLength:80}),email:t.String({minLength:3,maxLength:254}),password:t.String({minLength:12,maxLength:128})},{additionalProperties:false})
 export const ownerLoginInput=t.Object({email:t.String({minLength:3,maxLength:254}),password:t.String({maxLength:128})},{additionalProperties:false})
 export const ownerPasswordInput=t.Object({currentPassword:t.String({maxLength:128}),newPassword:t.String({minLength:12,maxLength:128})},{additionalProperties:false})
+export const setupLinkResponse=t.Object({code:t.String(),expiresAt:t.String()})
+export const setupLinkClaimInput=t.Object({code:t.String()},{additionalProperties:false})
+export const setupLinkClaimResponse=t.Object({expiresAt:t.String()})

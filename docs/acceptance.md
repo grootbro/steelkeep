@@ -254,3 +254,10 @@ checks the exact recovered marker/blob/count, rowids, identity 11, FK/integrity,
 occupied-target preservation and hard-link refusal. That profile passed in the combined
 group and a subsequent 35-assertion run. It does not qualify cross-kernel/network-filesystem
 SQLite access or crash consistency.
+## Platform continuation · 31 October 2026
+
+The owner expanded the active goal to the complete platform in [GOAL.md](../GOAL.md). Current source changes add collection search/filters and no-match states, context-sensitive first-backup guidance, clear source/restore roles, schedule presets and honest connection-test scope. Workspace rendering passed 18 synthetic browser assertions, and forms passed 15 interaction assertions plus 13 SSR guards. These use mocked API responses and do not qualify native backup/recovery. Actual isolated owner setup/sign-in/session revocation passed separately (1 test / 44 assertions); main owner credentials remain the user's choice.
+
+MongoDB admission now serializes source operations across database/endpoint aliases and respects retained server-wide source-lock journals before creating a run/outbox entry. A dedicated real metadata test passed 28 assertions in 409ms, including concurrent admission, manual refusal, scheduler outcomes, blocked connection DTOs, frozen credential rotation and idempotent result retrieval. The existing journal is preserved. This conservative admission also serializes independent Mongo servers until physical identity is available before admission; target database identities are unchanged. This test does not run a native Mongo dump. Its disposable metadata database was removed after data/client guards.
+
+The root unit group passed 32 tests / 216 assertions, and application/acceptance TypeScript checks passed. All UI/backend iteration used existing dependencies/source mounts; no Docker image build was performed. Current packaged images still predate owner auth and this platform UI.

@@ -39,8 +39,26 @@ export function AuthScreen({status}:{status:AuthStatus}){
   const [current,setCurrent]=useState(status)
   const [mode,setMode]=useState<'claim'|'setup'|'signin'>(status.setupRequired?(status.bootstrapAuthorized?'setup':'claim'):'signin')
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[passwordChanged,setPasswordChanged]=useState(false)
+  const [openingSetup,setOpeningSetup]=useState(false)
   const setup=mode==='setup',claim=mode==='claim'
   useEffect(()=>{setPasswordChanged(new URLSearchParams(window.location.search).get('signedOut')==='password-changed')},[])
+  useEffect(()=>{
+    if(!window.location.hash.startsWith('#setup='))return
+    const code=window.location.hash.slice(7)
+    window.history.replaceState(null,'',window.location.pathname+window.location.search)
+    setOpeningSetup(true);setBusy(true);setError('')
+    void(async()=>{
+      try{
+        await api('/auth/setup-link/claim',{code})
+        const verified=await api<AuthStatus>('/auth/status');setCurrent(verified)
+        if(verified.setupRequired&&verified.bootstrapAuthorized)setMode('setup')
+        else{setMode('signin');setError('This installation already has an owner. Sign in with your email and password.')}
+      }catch{
+        setError('This setup link is invalid, expired or already used. Run “bun run setup:owner” on your server for a new link.')
+        try{const latest=await api<AuthStatus>('/auth/status');setCurrent(latest);setMode(latest.setupRequired?'claim':'signin');if(!latest.setupRequired)setError('This installation already has an owner. Sign in with your email and password.')}catch{}
+      }finally{setOpeningSetup(false);setBusy(false)}
+    })()
+  },[])
   function switchMode(next:'claim'|'setup'|'signin'){setError('');setMode(next)}
   async function claimInstallation(form:HTMLFormElement){
     const key=String(new FormData(form).get('installationKey')??'').trim()
@@ -78,7 +96,8 @@ export function AuthScreen({status}:{status:AuthStatus}){
       }else setError(err instanceof ApiError&&err.status===429?'Too many attempts. Please wait a moment before trying again.':err instanceof ApiError&&err.code==='INVALID_CREDENTIALS'?'Email or password is incorrect.':err instanceof Error?err.message:'Could not reach your installation. Try again.')
     }finally{setBusy(false)}
   }
-  return <AuthShell><section className="auth-card"><Brand size={40}/><h1>{claim?'Set up your installation':setup?'Create your owner account':'Welcome back'}</h1><p className="auth-description">{claim?'Confirm your installation to get started.':setup?'Your account for backups and recovery.':'Sign in to your backup workspace.'}</p>{passwordChanged&&mode==='signin'&&<p role="status" className="auth-success">Password updated. Sign in with your new password.</p>}<form key={mode} onSubmit={submit} aria-busy={busy}>
+  if(openingSetup)return <AuthLoading/>
+  return <AuthShell><section className="auth-card"><Brand size={40}/><h1>{claim?'Set up your installation':setup?'Create your owner account':'Welcome back'}</h1><p className="auth-description">{claim?'Open the setup link from your server to get started.':setup?'Your account for backups and recovery.':'Sign in to your backup workspace.'}</p>{passwordChanged&&mode==='signin'&&<p role="status" className="auth-success">Password updated. Sign in with your new password.</p>}{claim&&<p className="auth-setup-command">On your server: <code>bun run setup:owner</code></p>}<form key={mode} onSubmit={submit} aria-busy={busy}>
     {claim?<><label>Setup key<input type="password" name="installationKey" autoComplete="off" autoFocus required maxLength={256} disabled={busy}/></label><details className="auth-key-help"><summary>Where to find the key?</summary><p>Find <code>.steelkeep/token</code> on your installation’s server. This key is only needed for the first setup.</p></details></>:<>
       {setup&&<label>Your name<input name="name" autoComplete="name" autoFocus required maxLength={80} disabled={busy}/></label>}
       <label>Email<input type="email" name="email" autoComplete="username" autoFocus={!setup} required maxLength={254} inputMode="email" autoCapitalize="none" spellCheck={false} disabled={busy}/></label>

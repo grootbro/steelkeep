@@ -7,7 +7,7 @@ import {config} from './config'
 import {mcpHandler} from './mcp'
 import {openapiPage} from './openapi-page'
 import {OwnerAuth} from './owner-auth'
-import {ownerSetupInput,ownerLoginInput,ownerPasswordInput,ownerStatusResponse,ownerSessionResponse} from './contracts'
+import {ownerSetupInput,ownerLoginInput,ownerPasswordInput,ownerStatusResponse,ownerSessionResponse,setupLinkResponse,setupLinkClaimInput,setupLinkClaimResponse} from './contracts'
 
 const params=t.Object({id:t.String({format:'uuid'})})
 const errors={400:errorResponse,401:errorResponse,403:errorResponse,404:errorResponse,409:errorResponse,422:errorResponse,429:errorResponse,500:errorResponse}
@@ -29,7 +29,7 @@ export function createApp(services:Services){
   if(origin&&!config.allowedOrigins().includes(origin)){set.status=403;return {error:{code:'ORIGIN_NOT_ALLOWED',message:'Origin not allowed.'}}}
   const path=url.pathname.replace(/\/+$/,'')||'/'
   if(path==='/api/v1/health'&&request.method==='GET')return
-  if((path==='/api/v1/auth/status'&&request.method==='GET')||(['/api/v1/auth/setup','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/session/logout'].includes(path)&&request.method==='POST'))return
+  if((path==='/api/v1/auth/status'&&request.method==='GET')||(['/api/v1/auth/setup','/api/v1/auth/setup-link/claim','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/session/logout'].includes(path)&&request.method==='POST'))return
   const principal=await authenticate(request)
   // Actual route guards own permissions; path aliases cannot downgrade a command scope.
   if(path.startsWith('/openapi'))authorize(principal,'read')
@@ -45,6 +45,8 @@ export function createApp(services:Services){
  .get('/openapi/assets/scalar.js',()=>new Response(Bun.file(new URL('../node_modules/@scalar/api-reference/dist/browser/standalone.js',import.meta.url)),{headers:{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}}),{beforeHandle:guard('read'),detail:{hide:true}})
  .get('/api/v1/health',()=>({status:'ok',version:'0.1.0'}),{response:{200:t.Object({status:t.String(),version:t.String()})},detail:{operationId:'health',security:[]}})
  .get('/api/v1/auth/status',({request})=>ownerAuth.status(request),{response:{200:ownerStatusResponse,...errors},detail:{operationId:'getAuthStatus',security:[]}})
+ .post('/api/v1/auth/setup-link',async({request,set})=>{const result=await ownerAuth.issueSetupLink(request);set.status=201;return result},{response:{201:setupLinkResponse,...errors},detail:{operationId:'issueSetupLink',security:[{installationToken:[]}],description:'Generate a single-use five-minute setup capability using the actual installation bearer key. Browser and agent sessions cannot issue links. The capability grants no workspace scopes.'}})
+ .post('/api/v1/auth/setup-link/claim',async({body,cookie})=>{const result=await ownerAuth.claimSetupLink(body.code);cookie.steelkeep_session.set({...sessionCookie(result.token),maxAge:300});return result.response},{body:setupLinkClaimInput,response:{200:setupLinkClaimResponse,...errors},detail:{operationId:'claimSetupLink',security:[],description:'Redeem a single-use setup capability from a JSON body for a short-lived setup-only HttpOnly cookie. Invalid, expired and already-used links have the same refusal.'}})
  .post('/api/v1/auth/setup',async({request,body,cookie,set})=>{const result=await ownerAuth.setup(request,body);cookie.steelkeep_session.set(sessionCookie(result.token));set.status=201;return result.response},{body:ownerSetupInput,response:{201:ownerSessionResponse,...errors},detail:{operationId:'setupOwner',description:'Create the first owner after proving installation ownership with the setup bearer key or its verified bootstrap session. Scoped agent credentials cannot claim ownership.'}})
  .post('/api/v1/auth/login',async({body,cookie})=>{const result=await ownerAuth.login(body);cookie.steelkeep_session.set(sessionCookie(result.token));return result.response},{body:ownerLoginInput,response:{200:ownerSessionResponse,...errors},detail:{operationId:'loginOwner',security:[]}})
  .post('/api/v1/auth/logout',async({request,cookie,set})=>{await ownerAuth.logout(request);cookie.steelkeep_session.set({...sessionCookie(''),maxAge:0});set.status=204},{detail:{operationId:'logoutOwner',security:[]}})

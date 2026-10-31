@@ -2,11 +2,11 @@
 
 ## Local checkpoint · 31 October 2026
 
-Docker and the preview are running again. Host free space reached12GiB after the failed-build remnants, this checkout's six build-history records/cache references and obsolete worker image were removed. BuildKit reports0B cache. Four stopped extra-engine fixture containers/images were also removed after checking ownership and image users; their named data volumes remain intact. Both temporary authentication test databases were verified synthetic/empty of backup data and removed after successful checks. The preview reuses the existing worker image and runs UI edits through Vite; no new Docker image was built for this checkpoint. Database/artifact volumes and other projects were preserved.
+Docker and the preview are running again. Host free space was13GiB at the latest check after the failed-build remnants, this checkout's six build-history records/cache references and obsolete worker image were removed. BuildKit reports0B cache. Four stopped extra-engine fixture containers/images were also removed after checking ownership and image users; their named data volumes remain intact. Both temporary authentication test databases were verified synthetic/empty of backup data and removed after successful checks. The preview reuses the existing worker image and runs UI edits through Vite; no new Docker image was built for this checkpoint. Database/artifact volumes and other projects were preserved.
 
-Owner email/password authentication now replaces the daily installation-token form. Initial setup creates the owner only after installation ownership is verified; an existing setup session avoids another key entry. Sessions are opaque, hashed in metadata and revocable. First setup has not been performed on the main installation: the user chooses their own account. [Authentication](docs/authentication.md).
+Owner email/password authentication now replaces the daily installation-token form. Initial setup creates the owner only after installation ownership is verified; an existing setup session avoids another key entry. Sessions are opaque, hashed in metadata and revocable. The owner chooses their own name/email/password; automated checks never create a main-installation account. [Authentication](docs/authentication.md).
 
-Observed checks: unit28/167 assertions and API/MCP integration34/209; isolated auth unit/integration3/65 assertions; browser setup/login/logout/password revocation and six sections1/24 assertions in4.69s, including the final legacy-cookie refusal; read-only desktop/mobile light/dark rendering passed. A separate native scheduled backup passed1/53 assertions in22.45s with S3 SHA-256 and source SQL checks; its plan is paused. The earlier outage-created plan was separately disabled and had no jobs/occurrences. The scheduler lock-wait clock correction is implemented; that specific contention case is not runtime-qualified.
+Observed checks: unit32/216 assertions and API/MCP integration34/209; isolated auth unit/integration3/65 assertions; browser one-time setup-link/setup/login/logout/password revocation and six sections1/44 assertions in5.29s, including the final legacy-cookie refusal; read-only desktop/mobile light/dark rendering passed. A separate native scheduled backup passed1/53 assertions in22.45s with S3 SHA-256 and source SQL checks; its plan is paused. The earlier outage-created plan was separately disabled and had no jobs/occurrences. The scheduler lock-wait clock correction is implemented; that specific contention case is not runtime-qualified.
 
 The current auth/brand/cache-recipe changes are source/development evidence. The older clean packaged1/91 pass predates them. The new cache-mount recipe has not been rebuilt; this checkpoint deliberately avoids another packaging build.
 
@@ -66,11 +66,13 @@ bun scripts/seed-fixture.ts
 bun run dev
 ```
 
-UI: [http://127.0.0.1:4310](http://127.0.0.1:4310). Create your owner account once, then sign in with email/password. The installation setup/API key is `.steelkeep/token`; generated encryption key:
+UI: [http://127.0.0.1:4310](http://127.0.0.1:4310). Run `bun run setup:owner` after the API is ready and open its private one-time link to choose your name, email and password. The link expires in five minutes and carries no installation key. Subsequent sign-in uses email/password. For another installation origin, set `STEELKEEP_SETUP_ORIGIN` to its HTTPS origin (HTTP is limited to loopback). The installation setup/API key is `.steelkeep/token`; generated encryption key:
 `.steelkeep/key`. Setup preserves existing files. API: port 4311, OpenAPI `/openapi`, JSON
 `/openapi/json`, MCP `/mcp`. The Start dev server forwards these to the same Elysia API.
 The Docker application profile uses internal fixture hostnames; a host-only API uses the
 loopback configuration from `.env.example` instead. Do not run both APIs on the same port.
+
+Compose honors `STEELKEEP_ALLOWED_HOSTS` from your environment or `.env`. Set the complete comma-separated list of database and S3 endpoint hostnames reachable from the containers, retaining any fixture names you still use. Container loopback points at the container; a database on the Mac needs a reachable host address such as `host.docker.internal`, explicitly allowlisted. Native PostgreSQL verified TLS uses system CA roots and hostname verification; private CA provisioning and an actual managed-server TLS run remain separate prerequisites.
 
 For a packaged build, `Dockerfile` serves Start documents/assets and Elysia API/MCP from
 one Bun server. `compose.selfhost.yaml` uses the separate `Dockerfile.engines` worker image.

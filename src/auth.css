@@ -43,6 +43,8 @@ footer .brand-wordmark{font-size:12px;letter-spacing:-.04em}
 .auth-key-help summary{cursor:pointer;width:fit-content;text-decoration:underline;text-underline-offset:3px}
 .auth-key-help p{margin-top:8px}
 .auth-key-help code{font-size:11px;color:var(--auth-ink)}
+.auth-setup-command{font-size:11px;line-height:1.6;color:var(--auth-muted);margin:-5px 0 18px}
+.auth-setup-command code{font-size:11px;color:var(--auth-ink)}
 .auth-switch{margin-top:18px;font-size:12px;line-height:1.6;color:var(--auth-muted)}
 .auth-switch button{border:0;padding:2px 3px;background:transparent;color:var(--auth-ink);font-size:12px;font-weight:550;text-decoration:underline;text-underline-offset:3px}
 .auth-switch button:hover{color:var(--auth-focus)}

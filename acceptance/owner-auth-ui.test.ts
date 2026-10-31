@@ -47,6 +47,12 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
    ;(node as HTMLInputElement).value=await provide(key);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}))
   },key)
  }
+ async function openSetupLink(page:Page){
+  await page.evaluate(async()=>{
+   const provide=(window as unknown as {__steelkeepAuthProof:(key:string)=>Promise<string>}).__steelkeepAuthProof
+   window.history.replaceState(null,'',await provide('setupLinkUrl'));window.location.reload()
+  })
+ }
  try{
   await writeFile(join(directory,'key'),randomBytes(32),{mode:0o600});await writeFile(join(directory,'token'),installationKey,{mode:0o600})
   start(['server/index.ts']);start(['run','vite','--port','4321','--strictPort'])
@@ -91,9 +97,29 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
   await page.getByText('This key cannot authorize installation setup. Use the installation setup key.',{exact:true}).waitFor();expect(await page.getByRole('alert').innerText()).toBe('This key cannot authorize installation setup. Use the installation setup key.')
   expect((await context.cookies()).some(cookie=>cookie.name==='steelkeep_session')).toBe(false)
   expect(await page.locator('input[name="name"]').count()).toBe(0)
-  await privateFill(page,'installationKey');await page.getByRole('button',{name:'Continue',exact:true}).click()
+  values.setupLinkUrl=origin+'/#setup=invalid-synthetic-setup-link'
+  await openSetupLink(page)
+  await page.getByText('This setup link is invalid, expired or already used. Run “bun run setup:owner” on your server for a new link.',{exact:true}).waitFor()
+  expect(await page.evaluate(()=>window.location.hash==='')).toBe(true)
+  expect(await page.locator('input[name="installationKey"]').count()).toBe(1)
+  const setupLinkResponse=await fetch(api+'/api/v1/auth/setup-link',{method:'POST',headers:{authorization:'Bearer '+installationKey}})
+  expect(setupLinkResponse.status).toBe(201)
+  if(!setupLinkResponse.ok)throw new Error('Synthetic setup-link issuance failed; credentials withheld.')
+  const setupLink=await setupLinkResponse.json() as {code:string;expiresAt:string}
+  expect(/^ss_[a-f0-9]{64}$/.test(setupLink.code)).toBe(true)
+  expect(Date.parse(setupLink.expiresAt)>Date.now()&&Date.parse(setupLink.expiresAt)<=Date.now()+300000).toBe(true)
+  values.setupLinkUrl=origin+'/#setup='+setupLink.code
+  let setupCodeInRequestUrl=false
+  page.on('request',request=>{if(request.url().includes(setupLink.code))setupCodeInRequestUrl=true})
+  await openSetupLink(page)
   await page.getByRole('heading',{name:'Create your owner account'}).waitFor()
+  expect(await page.evaluate(()=>window.location.hash==='')).toBe(true)
   expect(await page.locator('input[name="installationKey"]').count()).toBe(0)
+  const limitedSetupCookie=(await context.cookies()).find(cookie=>cookie.name==='steelkeep_session')?.value
+  if(!limitedSetupCookie)throw new Error('Synthetic setup-link claim did not create a session; credentials withheld.')
+  expect((await fetch(api+'/api/v1/me',{headers:{cookie:'steelkeep_session='+limitedSetupCookie}})).status).toBe(403)
+  expect((await fetch(api+'/api/v1/auth/setup-link/claim',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:setupLink.code})})).status).toBe(401)
+  expect(setupCodeInRequestUrl).toBe(false)
   expect(await page.getByLabel('Your name',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
   await page.keyboard.press('Tab');expect(await page.getByLabel('Email',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
   await page.setViewportSize({width:1440,height:1000})
@@ -122,8 +148,8 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
   expect((await fetch(api+'/api/v1/me',{headers:{cookie:'steelkeep_session='+oldCookie}})).status).toBe(401)
   expect(await page.getByRole('status').innerText()).toBe('Password updated. Sign in with your new password.')
   await privateFill(page,'email');await privateFill(page,'password','replacement');await page.getByRole('button',{name:'Sign in',exact:true}).click();await navigation.waitFor({timeout:15000})
-  const text=await page.locator('body').innerText();expect([installationKey,password,replacement].some(secret=>text.includes(secret))).toBe(false);expect(errors).toEqual([])
-  console.info(JSON.stringify({proof:'owner-auth-ui',sections:6,themes:2,mobileWidth:390,opaqueSessions:true,logoutRevoked:true,passwordRevoked:true}))
+  const text=await page.locator('body').innerText();expect([installationKey,password,replacement,setupLink.code].some(secret=>text.includes(secret))).toBe(false);expect(errors).toEqual([])
+  console.info(JSON.stringify({proof:'owner-auth-ui',sections:6,themes:2,mobileWidth:390,opaqueSessions:true,logoutRevoked:true,passwordRevoked:true,singleUseSetupLink:true,setupSessionHasNoWorkspaceScopes:true}))
  }finally{
   await browser?.close().catch(()=>{})
   for(const {child}of children)if(child.pid)try{process.kill(-child.pid,'SIGTERM')}catch{}
