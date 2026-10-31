@@ -20,6 +20,8 @@
 .profile-summary small{grid-column:2;font-size:10px;line-height:1.5}
 .profile-summary svg{align-self:center;grid-row:1/3}
 .profile-summary svg:last-child{grid-column:3}
+.profile-summary-scope{font-size:10px;line-height:1.8;color:var(--muted);max-width:100ch;margin:-10px 0 24px}
+.profile-summary-retry{border:0;background:transparent;color:var(--accent);font:inherit;margin-left:9px;padding:3px 0;text-decoration:underline;text-underline-offset:3px}
 .profile-columns{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
 .profile-primary,.profile-facts{display:flex;flex-direction:column;gap:20px;min-width:0}
 .profile-primary>.panel{scroll-margin-top:20px;min-width:0}

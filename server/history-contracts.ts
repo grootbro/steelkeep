@@ -12,5 +12,5 @@ const common={limit:t.Optional(t.Numeric({minimum:1,maximum:100})),cursor:t.Opti
 export const jobHistoryQuery=t.Object({...common,targetId:optionalId,planId:optionalId,type:oneOf(['backup','restore']),status:oneOf(['queued','running','cancelling','succeeded','failed','cancelled','interrupted'])},{additionalProperties:false})
 export const snapshotHistoryQuery=t.Object({...common,engine:oneOf(['postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql']),availability:oneOf(['present','missing','changed','unknown']),deletionState:oneOf(['active','queued','deleting','held','deleted'])},{additionalProperties:false})
 const page={nextCursor:t.Nullable(t.String()),limit:t.Integer(),order:t.Union([t.Literal('newest'),t.Literal('oldest')])}
-export const jobHistoryResponse=t.Object({...page,items:t.Array(t.Intersect([jobResponse,t.Object({source_name:t.String(),storage_name:t.String(),target_name:t.Nullable(t.String())})]))})
-export const snapshotHistoryResponse=t.Object({...page,items:t.Array(t.Intersect([artifactResponse,t.Object({source_name:t.String(),storage_name:t.String()})]))})
+export const jobHistoryResponse=t.Object({...page,items:t.Array(t.Object({...jobResponse.properties,source_name:t.String(),storage_name:t.String(),target_name:t.Nullable(t.String())}))})
+export const snapshotHistoryResponse=t.Object({...page,items:t.Array(t.Object({...artifactResponse.properties,source_name:t.String(),storage_name:t.String()}))})

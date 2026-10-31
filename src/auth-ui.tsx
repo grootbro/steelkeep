@@ -1,8 +1,9 @@
 import {useEffect,useId,useState,type FormEvent,type ReactNode} from 'react'
-import {Eye,EyeOff,LoaderCircle,LockKeyhole,Moon,Sun,ShieldCheck} from 'lucide-react'
+import {Eye,EyeOff,LoaderCircle,LockKeyhole,ShieldCheck} from 'lucide-react'
 import {useQuery} from '@tanstack/react-query'
 import {api,ApiError,queryClient} from './state'
 import {Brand} from './brand'
+import {useAppearance,ThemeButton} from './appearance'
 import {authDestination} from './auth-destination'
 
 export type OwnerUser={id:string;name:string;email:string}
@@ -16,15 +17,9 @@ function PasswordField({label,name,autoComplete,minLength,help,disabled=false}:{
   const [visible,setVisible]=useState(false),id=useId(),hint=useId()
   return <label className="password-label" htmlFor={id}>{label}<span className="password-control"><input id={id} name={name} type={visible?'text':'password'} autoComplete={autoComplete} required minLength={minLength} maxLength={128} disabled={disabled} aria-describedby={help?hint:undefined}/><button type="button" className="password-visibility" onClick={()=>setVisible(value=>!value)} aria-label={`${visible?'Hide':'Show'} ${label.toLowerCase()}`} aria-pressed={visible} disabled={disabled}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></span>{help&&<small id={hint}>{help}</small>}</label>
 }
-function useAppearance(){
-  const [theme,setTheme]=useState<'light'|'dark'>('light')
-  useEffect(()=>{try{const value=localStorage.getItem('steelkeep-auth-theme');if(value==='light'||value==='dark')setTheme(value)}catch{}},[])
-  function toggle(){setTheme(previous=>{const next=previous==='light'?'dark':'light';try{localStorage.setItem('steelkeep-auth-theme',next)}catch{}return next})}
-  return {theme,toggle}
-}
 function AuthShell({children}:{children:ReactNode}){
   const appearance=useAppearance()
-  return <main className="auth-screen" data-theme={appearance.theme}><button type="button" className="auth-theme-toggle" aria-label={`Switch to ${appearance.theme==='light'?'dark':'light'} theme`} onClick={appearance.toggle}>{appearance.theme==='light'?<Moon size={19}/>:<Sun size={19}/>}</button><div className="auth-stage">{children}<p className="auth-footnote"><LockKeyhole size={13}/>Your installation. Your data.</p></div></main>
+  return <main className="auth-screen" data-theme={appearance.theme}><ThemeButton appearance={appearance} className="auth-theme-toggle"/><div className="auth-stage">{children}<p className="auth-footnote"><LockKeyhole size={13}/>Your installation. Your data.</p></div></main>
 }
 export function AuthLoading(){return <AuthShell><section className="auth-card auth-loading" aria-busy="true"><Brand size={38}/><p><LoaderCircle size={17} className="spin"/>Connecting to your installation…</p></section></AuthShell>}
 export function AuthUnavailable({message,onRetry}:{message:string;onRetry:()=>void}){return <AuthShell><section className="auth-card"><Brand size={38}/><h1>Could not connect</h1><p className="auth-description">Your installation is unavailable. Try again in a moment.</p><p className="auth-error" role="alert">{message}</p><button className="auth-submit" onClick={onRetry}>Try again</button></section></AuthShell>}

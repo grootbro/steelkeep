@@ -4,18 +4,18 @@ Mode: Operate. User-pinned reference: Databasement, not an independent minimalis
 
 ## Visual thesis
 
-A cool graphite operational workspace: a quiet fixed sidebar, compact violet actions, large truthful summary numbers, a full-width activity chart, dense job history, and secondary status/storage panels. Instrument Sans follows the main reference. Source: Databasement commit e7535032de8570f97b982c857b809caa7f1f4a24 (28 October 2026). Source read and bundled screenshot visually inspected during research; its older Jobs menu/donut are not treated as current IA.
+A Milk/Graphite operational workspace: a quiet fixed sidebar, compact violet actions, large truthful summary numbers, a full-width activity chart, dense job history, and secondary status/storage panels. Inter follows the owner's brand book. Source: Databasement commit e7535032de8570f97b982c857b809caa7f1f4a24 (28 October 2026). Dashboard composition is adapted from its actual summary, activity, latest-jobs, status-grid and storage-distribution views. Steelkeep keeps its own navigation and recovery semantics.
 
 ## Composition and navigation
 
-250px sidebar, desktop main gutter 32px, page heading separated by a hairline. Dashboard: three summary cards; 14-day UTC activity chart; jobs table (roughly two thirds) alongside job-status grid and storage usage. Below 1250px jobs and side panels form separate rows; below 680px sidebar becomes a drawer. Connections and snapshots use dense tables. Backup plans show route, schedule, timezone, next runs, policy and occurrence history. No marketing hero, eyebrow or workflow filler.
+250px sidebar, desktop main gutter 32px, page heading separated by a hairline. Dashboard: three summary cards; 14-day UTC activity chart; compact job rows (roughly two thirds) alongside job-status grid and storage distribution. Below 1220px jobs and side panels form separate rows; below 680px sidebar becomes a drawer. Connections and snapshots use dense tables. Backup plans show route, schedule, timezone, next runs, policy and occurrence history. No marketing hero, eyebrow or workflow filler.
 
 ## Tokens
 
-- Ground #191e27; sidebar #171c25; panels #222936; raised control #2b3342.
-- Primary text #e9edf4; secondary text #a7b1c1; separator #343e50.
-- Accent #9a8aff; action fill #7665e9; success #2dd4a3; failure #fb7a92; warning #f2c467; secondary chart blue #72b5ff.
-- Font: self-hosted Instrument Sans Variable via @fontsource-variable/instrument-sans. Mono only identifiers, hashes, cron and technical values.
+- Dark: ground #181c23; sidebar #161a21; panels #222730; raised control #2b323d; primary text #edf0f6; secondary text #a6b0c0; separator #363e4b.
+- Light: Milk ground #f8fafc; white sidebar/panels; raised control #f0f3f8; Graphite text #0f172a; secondary text #5e6c82; separator #dfe5ee.
+- Blue Violet brand #6366f1; compact primary buttons #5c5fe2; dark accent #b1a8ff and light accent #5557d8. Status colors remain semantic, with separate readable light-theme treatments.
+- Font: self-hosted Inter Variable via @fontsource-variable/inter. Mono only identifiers, hashes, cron and technical values.
 - Page title 29px / 680; panel title 18px / 650; body 14px; table 12px; contextual metadata 10–12px; tabular numeric values.
 - Panels radius 12px; controls 7px; fields minimum 42px height. No decorative shadows on routine panels. Dialog shadow only.
 
@@ -27,6 +27,8 @@ REST action success invalidates overview/jobs/detail queries; jobs use TanStack 
 
 Restore opens a protected native dialog: artifact context → choose matching-engine restore-only connection → server preflight → source/target review + warnings → explicit acknowledgement → start using intent and one stable idempotency key generated when that intent is prepared. An ambiguous network/server error preserves the review and key; retry recovers the same request result. Changing the destination is disabled while that result is unknown. The target identity is not user-supplied free SQL. Interrupted and blocked target states stay visible. Native dialog provides focus containment, escape handling and focus return. Mobile navigation and content tables retain native scroll behavior. Reduced-motion preference disables authored transitions.
 
+One visible Sun/Moon icon switches between light and dark on each viewport. The preference is shared by authentication and workspace screens through `steelkeep-theme`, with legacy authentication preference read as a fallback. There is no system-theme option. Use the supplied original PNG mark and lockups; never redraw the owner's database artwork or typeset a replacement wordmark.
+
 ## Reference use and licensing
 
 Databasement MIT reference informed dashboard composition, summary hierarchy, activity/status panels, source-storage-schedule grouping, snapshot context and job-log flow. This is TypeScript/React implementation, not copied Blade component code. Root repository attribution documents reference reuse.
@@ -35,4 +37,4 @@ Salt.md theme source was read as the second reference, for consistent active/hov
 
 ## Validation boundary
 
-The initial redesign was code/static inspection only. The owner subsequently authorized local runtime review and isolated synthetic checks. Current auth, responsive layout, operational collections and forms have separate browser evidence recorded in docs/authentication.md and docs/acceptance.md; mocked rendering does not establish native backup/restore. Keep using the existing dev runtime rather than rebuilding Docker for UI work.
+Historical auth, responsive layout, operational collections and forms have browser evidence recorded in docs/authentication.md and docs/acceptance.md; mocked rendering does not establish native backup/restore. The latest owner instruction stops all local application execution. Local dependencies and generated builds were removed; current source checks and browser rendering run only on the isolated A-server stand, reusing its dependency image. Current dashboard, shared appearance, connection history and comment-control evidence is tied to frozen server snapshots in docs/design-validation.md and docs/snapshot-notes.md; older screenshots do not qualify later changes.

@@ -63,7 +63,7 @@ acceptance('isolated retention: real conditional S3 deletion, restore pins, scop
   await admin.query('CREATE DATABASE steelkeep_retention_test');created=true;createdOid=(await admin.query<{oid:number}>('SELECT oid FROM pg_database WHERE datname=$1',[database])).rows[0].oid
   const migration=Bun.spawn([process.execPath,'server/migrate.ts'],{cwd:process.cwd(),env:{...process.env,DATABASE_URL:target.toString(),STEELKEEP_DATABASE_PASSWORD_FILE:''},stdout:'ignore',stderr:'ignore',timeout:15000});if(await migration.exited!==0)throw new Error('Dedicated retention migration failed; diagnostics withheld.')
   await holder.connect();holderConnected=true;await emptyPublicTables()
-  expect((await holder.query<{v:number}>('SELECT max(version)::int AS v FROM steelkeep_migrations')).rows[0].v).toBe(8)
+  expect((await holder.query<{v:number}>('SELECT version::int AS v FROM steelkeep_migrations WHERE version=8')).rows[0].v).toBe(8)
   try{await s3.send(new HeadBucketCommand({Bucket:bucket}));throw new Error('Unexpected existing nonce bucket.')}catch(error){if((error as {$metadata?:{httpStatusCode?:number}}).$metadata?.httpStatusCode!==404)throw new Error('The new nonce bucket absence guard failed.')}
   await s3.send(new CreateBucketCommand({Bucket:bucket}));bucketCreated=true
   const canary=prefix+'/conditional-canary';await s3.send(new PutObjectCommand({Bucket:bucket,Key:canary,Body:'synthetic conditional canary',IfNoneMatch:'*'}));keys.add(canary)

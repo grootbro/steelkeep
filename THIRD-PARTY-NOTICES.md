@@ -9,8 +9,12 @@ are adapted from its retention action, rewritten in TypeScript. Source commit:
 
 - resources/views/livewire/dashboard.blade.php
 - resources/views/livewire/dashboard/snapshots-card.blade.php
+- resources/views/livewire/dashboard/storage-card.blade.php
+- resources/views/livewire/dashboard/success-rate-card.blade.php
 - resources/views/livewire/dashboard/jobs-activity-chart.blade.php
 - resources/views/livewire/dashboard/latest-jobs.blade.php
+- resources/views/livewire/dashboard/job-status-grid.blade.php
+- resources/views/livewire/dashboard/storage-distribution-chart.blade.php
 - resources/views/livewire/database-server/show.blade.php (profile composition, rewritten in React)
 - app/Actions/Snapshot/ApplyRetentionPoliciesAction.php (latest-N/GFS selection semantics)
 

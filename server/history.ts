@@ -40,7 +40,7 @@ export function historyAnchor(kind:'jobs'|'snapshots',input:HistoryInput,key:Buf
   if(!parsed.success||parsed.data.kind!==kind||parsed.data.filter!==filterHash(input))throw invalid()
   return parsed.data.anchor
 }
-const literalLike=(value:string)=>'%'+value.replace(/[\\%_]/g,char=>'\\'+char)+'%'
+const literalLike=(value:string)=>'%'+value.replace(/[!%_]/g,char=>'!'+char)+'%'
 const dateAnchor=(table:'r'|'a')=>sql<string>`to_char(${sql.ref(table+'.created_at')} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as('_cursor_created_at')
 
 export class HistoryServices{
@@ -64,14 +64,14 @@ export class HistoryServices{
     if(input.status)query=query.where('r.status','=',input.status)
     if(input.from)query=query.where('r.created_at','>=',sql<Date>`${input.from}::timestamptz`)
     if(input.until)query=query.where('r.created_at','<=',sql<Date>`${input.until}::timestamptz`)
-    if(input.search){const pattern=literalLike(input.search);query=query.where(eb=>eb.or([sql<boolean>`r.id::text ILIKE ${pattern} ESCAPE '\'`,eb('s.name','ilike',pattern),eb('v.name','ilike',pattern),eb('t.name','ilike',pattern)]))}
+    if(input.search){const pattern=literalLike(input.search);query=query.where(eb=>eb.or([sql<boolean>`r.id::text ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`s.name ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`v.name ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`t.name ILIKE ${pattern} ESCAPE '!'`]))}
     if(anchor)query=query.where(sql<boolean>`(r.created_at,r.id) ${sql.raw(input.order==='newest'?'<':'>')} (${anchor.createdAt}::timestamptz,${anchor.id}::uuid)`)
     const rows=await query.orderBy('r.created_at',direction).orderBy('r.id',direction).limit(input.limit+1).execute(),page=rows.slice(0,input.limit),last=page.at(-1)
     return {items:page.map(({_cursor_created_at,...row})=>({...safeRun(row),source_name:row.source_name,storage_name:row.storage_name,target_name:row.target_name})),nextCursor:rows.length>input.limit&&last?historyCursor('jobs',input,{createdAt:last._cursor_created_at,id:last.id},this.key):null,limit:input.limit,order:input.order}
   }
   async snapshots(value:unknown){
     const input=historyInput('snapshots',value) as z.infer<typeof snapshotHistoryInput>,anchor=historyAnchor('snapshots',input,this.key),direction=input.order==='newest'?'desc':'asc'
-    let query=this.db.selectFrom('artifacts as a').innerJoin('connections as s','s.id','a.source_id').innerJoin('connections as v','v.id','a.storage_id').select(['a.id','a.run_id','a.source_id','a.storage_id','a.object_key','a.size','a.sha256','a.engine','a.server_version','a.tool_version','a.created_at','a.availability','a.checked_at','a.retention_locked','a.deletion_state','a.deleted_at','s.name as source_name','v.name as storage_name',dateAnchor('a')]).select(eb=>eb.selectFrom('runs as rr').select(sql<{status:string;validation:Record<string,unknown>|null;finished_at:string|null}>`json_build_object('status',rr.status,'validation',rr.validation,'finished_at',rr.finished_at)`.as('restore')).whereRef('rr.artifact_id','=','a.id').where('rr.type','=','restore').orderBy('rr.created_at','desc').orderBy('rr.id','desc').limit(1).as('last_restore'))
+    let query=this.db.selectFrom('artifacts as a').innerJoin('connections as s','s.id','a.source_id').innerJoin('connections as v','v.id','a.storage_id').select(['a.id','a.run_id','a.source_id','a.storage_id','a.object_key','a.size','a.sha256','a.engine','a.server_version','a.tool_version','a.created_at','a.availability','a.checked_at','a.retention_locked','a.deletion_state','a.deleted_at','a.comment','a.comment_revision','a.commented_at','s.name as source_name','v.name as storage_name',dateAnchor('a')]).select(eb=>eb.selectFrom('runs as rr').select(sql<{status:string;validation:Record<string,unknown>|null;finished_at:string|null}>`json_build_object('status',rr.status,'validation',rr.validation,'finished_at',rr.finished_at)`.as('restore')).whereRef('rr.artifact_id','=','a.id').where('rr.type','=','restore').orderBy('rr.created_at','desc').orderBy('rr.id','desc').limit(1).as('last_restore'))
     if(input.id)query=query.where('a.id','=',input.id)
     if(input.sourceId)query=query.where('a.source_id','=',input.sourceId)
     if(input.storageId)query=query.where('a.storage_id','=',input.storageId)
@@ -80,7 +80,7 @@ export class HistoryServices{
     if(input.deletionState)query=query.where('a.deletion_state','=',input.deletionState)
     if(input.from)query=query.where('a.created_at','>=',sql<Date>`${input.from}::timestamptz`)
     if(input.until)query=query.where('a.created_at','<=',sql<Date>`${input.until}::timestamptz`)
-    if(input.search){const pattern=literalLike(input.search);query=query.where(eb=>eb.or([sql<boolean>`a.id::text ILIKE ${pattern} ESCAPE '\'`,eb('s.name','ilike',pattern),eb('v.name','ilike',pattern),eb('a.sha256','ilike',pattern)]))}
+    if(input.search){const pattern=literalLike(input.search);query=query.where(eb=>eb.or([sql<boolean>`a.id::text ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`s.name ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`v.name ILIKE ${pattern} ESCAPE '!'`,sql<boolean>`a.sha256 ILIKE ${pattern} ESCAPE '!'`]))}
     if(anchor)query=query.where(sql<boolean>`(a.created_at,a.id) ${sql.raw(input.order==='newest'?'<':'>')} (${anchor.createdAt}::timestamptz,${anchor.id}::uuid)`)
     const rows=await query.orderBy('a.created_at',direction).orderBy('a.id',direction).limit(input.limit+1).execute(),page=rows.slice(0,input.limit),last=page.at(-1)
     return {items:page.map(({_cursor_created_at,...row})=>({...row,last_restore:row.last_restore?{...row.last_restore,finished_at:row.last_restore.finished_at?new Date(row.last_restore.finished_at).toISOString():null}:null})),nextCursor:rows.length>input.limit&&last?historyCursor('snapshots',input,{createdAt:last._cursor_created_at,id:last.id},this.key):null,limit:input.limit,order:input.order}

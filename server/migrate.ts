@@ -117,6 +117,10 @@ try {
       await sql`CREATE INDEX artifacts_created_id ON artifacts(created_at DESC,id DESC)`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(9)`.execute(trx)
     }
+    if(!versions.has(10)){
+      await sql`ALTER TABLE artifacts ADD COLUMN comment text CHECK(comment IS NULL OR char_length(comment)<=2000),ADD COLUMN comment_revision integer NOT NULL DEFAULT 1 CHECK(comment_revision>0),ADD COLUMN commented_at timestamptz`.execute(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(10)`.execute(trx)
+    }
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

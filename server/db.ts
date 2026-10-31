@@ -29,6 +29,7 @@ interface Artifact {
   size:string; sha256:string; engine:string; server_version:string; tool_version:string;
   created_at:Generated<Date>; availability:string; checked_at:DateTime|null; manifest?:Record<string,unknown>|null;
   retention_locked:Generated<boolean>;deletion_state:Generated<'active'|'queued'|'deleting'|'held'|'deleted'>;deleted_at:DateTime|null
+  comment:Generated<string|null>;comment_revision:Generated<number>;commented_at:Generated<Date|null>
 }
 interface Event { id:Generated<string>; run_id:string; phase:string; message:string; created_at:Generated<Date> }
 interface Outbox { run_id:string; dispatched_at:DateTime|null }

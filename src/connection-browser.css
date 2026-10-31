@@ -1,0 +1,24 @@
+.connection-browser{min-width:0}
+.connection-browser-filters{display:flex;align-items:flex-end;flex-wrap:wrap;gap:13px 12px;padding:0 22px 18px}
+.connection-browser-filters>label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:10px;flex:1;min-width:125px}
+.connection-browser-filters>.connection-browser-search{flex:2;min-width:190px}
+.connection-browser-filters input,.connection-browser-filters select{font-size:12px;min-height:37px;padding:8px 10px;background:var(--ground)}
+.connection-browser-filter-actions{display:flex;align-items:center;gap:11px}
+.connection-browser-filter-actions .text-button{background:none;border:0;padding:7px 3px;font-size:11px;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+.connection-browser-count{padding:0 22px 13px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.connection-browser-table{font-size:11px}
+.connection-browser-table td{vertical-align:top}
+.connection-browser-table small{font-size:10px;color:var(--muted);line-height:1.7;display:block;margin-top:5px;white-space:normal;overflow-wrap:anywhere}
+.connection-browser-table .connection-name{align-items:flex-start}
+.connection-browser-table .connection-name>span:last-child{min-width:0}
+.connection-browser-table strong{font-size:12px;white-space:normal;overflow-wrap:anywhere}
+.connection-browser-endpoint{max-width:230px;white-space:normal;overflow-wrap:anywhere}
+.connection-browser-table .badge.on_hold,.connection-browser-table .badge.protected{display:flex;width:fit-content;margin-top:8px}
+.connection-browser-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.connection-browser-pagination{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 22px;border-top:1px solid var(--line)}
+.connection-browser-pagination>span{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.connection-browser-error{display:flex;align-items:flex-start;justify-content:space-between;gap:13px;padding:13px 22px;color:var(--bad);font-size:11px;line-height:1.8}
+.connection-browser-error>p{max-width:70ch;overflow-wrap:anywhere}
+.connection-browser-error>button{flex:none}
+@media(max-width:700px){.connection-browser-filters{padding-inline:16px;gap:12px}.connection-browser-filters>.connection-browser-search{flex-basis:100%}.connection-browser-filters>label{flex-basis:calc(50% - 6px);min-width:0}.connection-browser-filter-actions{flex-basis:100%}.connection-browser-count{padding-inline:16px}.connection-browser-pagination{padding:15px 16px;gap:10px}.connection-browser-error{padding-inline:16px;flex-wrap:wrap}}
+@media(max-width:600px){.connection-browser-table{display:block;width:100%;min-width:0}.connection-browser-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.connection-browser-table tbody{display:block}.connection-browser-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:13px;padding:17px 16px;border-top:1px solid var(--line)}.connection-browser-table td{display:block!important;padding:0;border:0;min-width:0;white-space:normal}.connection-browser-table td:nth-child(1),.connection-browser-table td:nth-child(2),.connection-browser-table td:nth-child(5),.connection-browser-table td:nth-child(6){grid-column:1/-1}.connection-browser-table td:nth-child(2){max-width:none}.connection-browser-table td:nth-child(4){text-align:right}.connection-browser-table td:nth-child(5):before{content:'Added ';font-size:10px;color:var(--muted)}.connection-browser-table .connection-name strong{font-size:13px}.connection-browser-actions{gap:10px}}

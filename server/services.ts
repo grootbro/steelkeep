@@ -16,6 +16,8 @@ import {AgentServices,audit} from './agents'
 import {authenticateRequest} from './auth'
 import {RetentionServices,retainedPlanDto} from './retention'
 import {NotificationServices} from './notifications'
+import {ConnectionHistoryServices} from './connection-history'
+import {ArtifactCommentServices} from './artifact-comments'
 export {authenticateRequest,authorize,validateScopedTokens,type Principal,type Scope} from './auth'
 
 export {engineProfiles} from '../shared/engines'
@@ -91,7 +93,9 @@ export class Services {
  readonly agents:AgentServices
  readonly retention:RetentionServices
  readonly notifications:NotificationServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db)}
+ readonly connectionHistory:ConnectionHistoryServices
+ readonly artifactComments:ArtifactCommentServices
+ constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db)}
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
   .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])
@@ -354,7 +358,7 @@ export class Services {
   })
  }
  async artifacts(){
-  const rows=await this.db.selectFrom('artifacts').select(['id','run_id','source_id','storage_id','object_key','size','sha256','engine','server_version','tool_version','created_at','availability','checked_at','retention_locked','deletion_state','deleted_at']).orderBy('created_at','desc').limit(100).execute()
+  const rows=await this.db.selectFrom('artifacts').select(['id','run_id','source_id','storage_id','object_key','size','sha256','engine','server_version','tool_version','created_at','availability','checked_at','retention_locked','deletion_state','deleted_at','comment','comment_revision','commented_at']).orderBy('created_at','desc').limit(100).execute()
   return Promise.all(rows.map(async row=>({...row,last_restore:await this.db.selectFrom('runs').select(['status','validation','finished_at']).where('artifact_id','=',row.id).where('type','=','restore').orderBy('created_at','desc').executeTakeFirst()??null})))
  }
  async cancel(id:string,actor='installation-owner'){

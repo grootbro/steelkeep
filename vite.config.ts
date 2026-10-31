@@ -7,6 +7,7 @@ if(!/^\d{4,5}$/.test(apiPort)||Number(apiPort)>65535)throw new Error('Use a vali
 const apiTarget=`http://127.0.0.1:${apiPort}`
 
 export default defineConfig({
+  cacheDir: process.env.STEELKEEP_VITE_CACHE_DIR,
   plugins: [tanstackStart({ spa: { enabled: true } }), react()],
   server: {
     host: '127.0.0.1',
