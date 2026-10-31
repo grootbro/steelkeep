@@ -1,0 +1,42 @@
+# Dedicated current-source UI/native proof. Reuses existing local images and fixtures.
+name: steelkeep-ui-proof
+services:
+  api:
+    container_name: steelkeep-ui-proof-api
+    image: steelkeep-worker:local
+    pull_policy: never
+    user: "${STEELKEEP_UID:?Run setup:local first}:${STEELKEEP_GID:?Run setup:local first}"
+    command: [bun, server/index.ts]
+    labels: {purpose: steelkeep-native-ui-proof}
+    environment: &proof_environment
+      DATABASE_URL: postgres://steelkeep:local-metadata-only@metadata:5432/steelkeep_ui_proof
+      STEELKEEP_DATABASE_PASSWORD_FILE: ''
+      STEELKEEP_KEY_FILE: /run/steelkeep/key
+      STEELKEEP_TOKEN_FILE: /run/steelkeep/token
+      STEELKEEP_ALLOWED_HOSTS: fixture,mysql-fixture,s3
+      STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4321
+      STEELKEEP_PUBLIC_HOSTS: 127.0.0.1
+      STEELKEEP_SECURE_COOKIE: 'false'
+      HOST: 0.0.0.0
+      PORT: 4322
+    volumes: &proof_mounts
+      - ./server:/app/server:ro
+      - ./shared:/app/shared:ro
+      - ./.steelkeep/ui-proof:/run/steelkeep:ro
+    ports: ["127.0.0.1:4322:4322"]
+    networks: [fixtures]
+  worker:
+    container_name: steelkeep-ui-proof-worker
+    image: steelkeep-worker:local
+    pull_policy: never
+    user: "${STEELKEEP_UID:?Run setup:local first}:${STEELKEEP_GID:?Run setup:local first}"
+    command: [bun, server/worker.ts]
+    stop_grace_period: 30s
+    labels: {purpose: steelkeep-native-ui-proof}
+    environment: *proof_environment
+    volumes: *proof_mounts
+    networks: [fixtures]
+networks:
+  fixtures:
+    external: true
+    name: steelkeep_default

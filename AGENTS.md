@@ -12,6 +12,7 @@ The owner expanded the objective to a complete platform on 31 October. Read GOAL
 - User explicitly requests subagents. Keep their write boundaries disjoint; root integrates into one coherent app.
 
 - Only synthetic isolated data. No production connections, deployment, publication or paid services.
+- The owner explicitly authorized choosing server A or B for a separate synthetic SQL Server acceptance stand on 31 October. Read-only capacity checks selected A (185.70.198.142). Keep the stand in its own project/network/paths with loopback ports and resource limits; do not connect existing services or change their databases. Microsoft EULA confirmation is required before starting that licensed container; host selection alone was confirmed so far.
 - Preserve secrets and data; never restore over source, metadata DB, or a nonempty target.
 - REST and MCP call the same application services; native tools execute in worker only.
 - No optimistic job success or invented progress. Backup success, checksum and restore validation differ.

@@ -19,6 +19,8 @@ The authorized local review on 31 October 2026 has verified ordinary native reco
 seven engine profiles, plus build/typecheck and targeted tests. The full eight-engine
 acceptance goal remains open. Scope and limitations are recorded in the [acceptance ledger](docs/acceptance.md).
 
+Latest current-source checkpoint: the new owner flow and forms passed a real isolated PostgreSQL UI backup/restore in16.9s; a separate scoped AI-agent MCP native backup passed34assertions in2.01s, including independent S3 bytes/SHA and revocation. Connections now explains retained recovery protection and links to its job. Unit group38/297; [proof boundaries and evidence](docs/current-source-ui-proof.md). No Docker image rebuild was needed.
+
 ## Product
 
 - Database and S3 connections, encrypted credentials, revision-checked edits and explicit endpoint allowlists.

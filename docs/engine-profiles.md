@@ -57,9 +57,9 @@ other database grants, inherited roles and GRANT OPTION remain disallowed.
 
 Source: `tools/Steelkeep.DacFx`. Its project pins Microsoft.SqlServer.DacFx 170.5.96.
 The owning operator must provision a supported Linux x64 .NET 10 environment and
-review the actual Microsoft package terms. Nothing was downloaded, licensed,
-compiled or executed as part of authoring this helper. The application's MIT
-license does not relicense Microsoft binaries.
+review the actual Microsoft package terms. Initial authoring did not execute the helper;
+the later native-tooling checkpoint compiled it, while actual SQL Server runtime remains
+unqualified. The application's MIT license does not relicense Microsoft binaries.
 
 During the later authorized build phase, publish the helper to a protected worker
 directory and set `STEELKEEP_DACFX_HELPER` to its absolute `Steelkeep.DacFx.dll` path.
@@ -77,8 +77,9 @@ Primary contracts: [DacServices export](https://learn.microsoft.com/en-us/dotnet
 [BACPAC source consistency](https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-export?view=sql-server-ver17),
 [existing empty target](https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-import?view=sql-server-ver17),
 [actual package license](https://www.nuget.org/packages/Microsoft.SqlServer.DacFx/170.5.96/License).
-The API documentation currently describes an earlier assembly generation; source
-compatibility with the pinned package must still be compiled and exercised.
+The API documentation currently describes an earlier assembly generation. Source
+compatibility compiled at the recorded native-tooling checkpoint; database export/import
+behavior still needs the real SQL Server acceptance run.
 
 ## Source-lock reconciliation
 

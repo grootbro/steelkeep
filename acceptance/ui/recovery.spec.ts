@@ -1,20 +1,47 @@
 import {test,expect,type Page,type Locator,type Response} from '@playwright/test'
 import {randomBytes,createHash} from 'node:crypto'
-import {readFile} from 'node:fs/promises'
+import {execFile} from 'node:child_process'
+import {promisify} from 'node:util'
+import {readFile,lstat,realpath,writeFile} from 'node:fs/promises'
 import {resolve,dirname,join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import pg from 'pg'
 import mysql,{type RowDataPacket,type Connection as MariaConnection,type ResultSetHeader} from 'mysql2/promise'
 import {S3Client,CreateBucketCommand,GetObjectCommand} from '@aws-sdk/client-s3'
 
-const metadataUrl='postgres://steelkeep:local-metadata-only@127.0.0.1:54371/steelkeep'
+const firstBackup=process.env.STEELKEEP_ACCEPTANCE==='synthetic-ui-firstbackup'
+const metadataName=firstBackup?'steelkeep_ui_proof':'steelkeep'
+const metadataUrl='postgres://steelkeep:local-metadata-only@127.0.0.1:54371/'+metadataName
+const origin=firstBackup?'http://127.0.0.1:4321':'http://127.0.0.1:4310'
 const workspace=resolve(dirname(fileURLToPath(import.meta.url)),'../..')
+const privateRoot=join(workspace,'.steelkeep',...(firstBackup?['ui-proof']:[]))
 type Engine='postgres'|'mariadb'
 type Fixture={engine:Engine;suffix:string;sourceDatabase:string;targetDatabase:string;reader:string;writer:string;readerPassword:string;writerPassword:string;sourceName:string;targetName:string;storageName:string;planName:string;bucket:string;prefix:string}
 type Artifact={id:string;source_id:string;storage_id:string;run_id:string;object_key:string;size:string;sha256:string;engine:string;checked_at:Date|null}
+const execFileAsync=promisify(execFile)
+
+async function guardDedicatedRuntime(){
+  if(!firstBackup)return
+  if(process.env.DOCKER_HOST||process.env.DOCKER_CONTEXT)throw new Error('The dedicated UI proof requires the default local Docker endpoint.')
+  async function inspect(args:string[]){try{return (await execFileAsync('docker',args,{env:{PATH:process.env.PATH,HOME:process.env.HOME},timeout:10000,maxBuffer:128*1024})).stdout.trim()}catch{throw new Error('Dedicated proof runtime inspection failed; raw Docker diagnostics are omitted.')}}
+  const endpoint=JSON.parse(await inspect(['context','inspect','--format','{{json .Endpoints.docker.Host}}'])) as unknown
+  if(typeof endpoint!=='string'||!endpoint.startsWith('unix:///'))throw new Error('Dedicated UI proof requires a local Docker Unix socket.')
+  const format='{"running":{{json .State.Running}},"labels":{{json .Config.Labels}},"env":{{json .Config.Env}},"mounts":{{json .Mounts}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"image":{{json .Image}}}'
+  for(const service of ['api','worker']){
+    const row=JSON.parse(await inspect(['--host',endpoint,'inspect','--format',format,'steelkeep-ui-proof-'+service])) as {running:boolean;labels:Record<string,string>;env:string[];mounts:Array<{Type:string;Source:string;Destination:string;RW:boolean}>;ports:Record<string,Array<{HostIp:string;HostPort:string}>|null>;networks:Record<string,unknown>;image:string}
+    if(!row.running||row.labels['com.docker.compose.project']!=='steelkeep-ui-proof'||row.labels['com.docker.compose.service']!==service||row.labels.purpose!=='steelkeep-native-ui-proof'||row.image!=='sha256:ed6ac2132f62451299ed661eca043592883431fa11b42ecb5cc62e19cdacce99'||!row.networks.steelkeep_default)throw new Error('Dedicated UI proof container identity differs from the owner-prepared runtime.')
+    for(const value of ['DATABASE_URL=postgres://steelkeep:local-metadata-only@metadata:5432/steelkeep_ui_proof','STEELKEEP_KEY_FILE=/run/steelkeep/key','STEELKEEP_TOKEN_FILE=/run/steelkeep/token','STEELKEEP_ALLOWED_HOSTS=fixture,mysql-fixture,s3','STEELKEEP_ALLOWED_ORIGINS='+origin])if(!row.env.includes(value))throw new Error('Dedicated UI proof runtime configuration differs from its fixed metadata and fixture boundary.')
+    const expected=new Map([['/app/server',join(workspace,'server')],['/app/shared',join(workspace,'shared')],['/run/steelkeep',privateRoot]])
+    if(row.mounts.length!==expected.size||row.mounts.some(m=>m.Type!=='bind'||m.RW||!expected.has(m.Destination)||!(m.Source===expected.get(m.Destination)||process.platform==='darwin'&&m.Source==='/host_mnt'+expected.get(m.Destination))))throw new Error('Dedicated UI proof mounts exceed the read-only source/private-file boundary.')
+    if(service==='api'){
+      const bindings=row.ports['4322/tcp']
+      if(!bindings||bindings.length!==1||bindings[0].HostIp!=='127.0.0.1'||bindings[0].HostPort!=='4322'||Object.entries(row.ports).some(([port,values])=>port!=='4322/tcp'&&values?.length))throw new Error('Dedicated UI proof API must bind only loopback port 4322.')
+    }else if(Object.values(row.ports).some(values=>values?.length))throw new Error('Dedicated UI proof worker must not publish ports.')
+  }
+}
 
 function optIn(){
-  if(process.env.STEELKEEP_ACCEPTANCE!=='synthetic-local-ui'||process.env.DATABASE_URL!==metadataUrl||process.env.STEELKEEP_DATABASE_PASSWORD_FILE)throw new Error('Refusing mutations outside the exact synthetic UI fixture metadata configuration.')
+  if((!firstBackup&&process.env.STEELKEEP_ACCEPTANCE!=='synthetic-local-ui')||process.env.DATABASE_URL!==metadataUrl||process.env.STEELKEEP_DATABASE_PASSWORD_FILE)throw new Error('Refusing mutations outside the exact synthetic UI fixture metadata configuration.')
 }
 async function metadata(sql:string,values:unknown[]=[]){
   optIn()
@@ -27,14 +54,18 @@ async function metadata(sql:string,values:unknown[]=[]){
 async function guardMetadata(){
   optIn()
   const [identity]=await metadata("SELECT current_database() AS name,current_user AS actor,current_setting('server_version_num')::int AS version,to_regclass('public.connections')::text AS connections,to_regclass('public.runs')::text AS runs")
-  if(identity?.name!=='steelkeep'||identity.actor!=='steelkeep'||Math.floor(Number(identity.version)/10000)!==17||!identity.connections||!identity.runs)throw new Error('The expected migrated PostgreSQL 17 synthetic metadata database was not established.')
-  const [owner]=await metadata('SELECT count(*)::int AS count FROM owner_account')
-  if(Number(owner?.count)!==1)throw new Error('Complete the first owner account setup yourself in the local UI before operational recovery acceptance. This suite never creates an owner or requests your account password; no fixture, storage or recovery mutation was started.')
+  if(identity?.name!==metadataName||identity.actor!=='steelkeep'||Math.floor(Number(identity.version)/10000)!==17||!identity.connections||!identity.runs)throw new Error('The expected migrated PostgreSQL 17 synthetic metadata database was not established.')
+  const owners=await metadata('SELECT name,email FROM owner_account')
+  if(firstBackup){
+    if(await realpath(workspace)!=='/Users/dobrota/dev/steelkeep'||owners.length>1||owners.some(owner=>owner.name!=='Synthetic platform proof owner'||!/^platform-proof-[a-f0-9]+@example\.test$/.test(String(owner.email))))throw new Error('The dedicated first-backup metadata contains an unexpected owner; no mutation is allowed.')
+  }else if(owners.length!==1)throw new Error('Complete the first owner account setup yourself in the local UI before operational recovery acceptance. This suite never creates an owner or requests your account password; no fixture, storage or recovery mutation was started.')
   const hosts=new Set(['fixture','mysql-fixture','mysql8-fixture','mongodb-fixture','redis-fixture','clickhouse-fixture','mssql-fixture'])
   for(const row of await metadata('SELECT kind,config FROM connections')){
     const c=row.config as Record<string,unknown>
     if(row.kind==='s3'){
       if(c.endpoint!=='http://s3:9000')throw new Error('UI recovery requires dedicated fixture metadata without non-fixture storage profiles.')
+    }else if(firstBackup){
+      if(row.kind!=='postgres'||c.host!=='fixture'||c.port!==5432||!(/^(?:ui-postgres-src-|123ui_pg_dst_)[a-f0-9]{12}$/.test(String(c.database))))throw new Error('Dedicated first-backup metadata contains an unexpected database profile.')
     }else if(row.kind==='sqlite'){
       if(typeof c.path!=='string'||!c.path.startsWith('/var/lib/steelkeep-fixtures/sqlite/'))throw new Error('UI recovery requires dedicated fixture metadata without non-fixture local database paths.')
     }else if(!hosts.has(String(c.host)))throw new Error('UI recovery requires dedicated fixture metadata without non-fixture database hosts.')
@@ -42,7 +73,7 @@ async function guardMetadata(){
 }
 function definition(engine:Engine):Fixture{
   const suffix=randomBytes(6).toString('hex'),label=engine==='postgres'?'PG17':'Maria11'
-  return {engine,suffix,sourceDatabase:`ui_${engine}_src_${suffix}`,targetDatabase:`ui_${engine}_dst_${suffix}`,reader:`ui_reader_${suffix}`,writer:`ui_writer_${suffix}`,readerPassword:randomBytes(24).toString('hex'),writerPassword:randomBytes(24).toString('hex'),sourceName:`UI ${label} source ${suffix}`,targetName:`UI ${label} recovery ${suffix}`,storageName:`UI ${label} storage ${suffix}`,planName:`UI ${label} plan ${suffix}`,bucket:`steelkeep-ui-${engine}-${suffix}`,prefix:`ui/${engine}/${suffix}`}
+  return {engine,suffix,sourceDatabase:firstBackup?`ui-postgres-src-${suffix}`:`ui_${engine}_src_${suffix}`,targetDatabase:firstBackup?`123ui_pg_dst_${suffix}`:`ui_${engine}_dst_${suffix}`,reader:`ui_reader_${suffix}`,writer:`ui_writer_${suffix}`,readerPassword:randomBytes(24).toString('hex'),writerPassword:randomBytes(24).toString('hex'),sourceName:`UI ${label} source ${suffix}`,targetName:`UI ${label} recovery ${suffix}`,storageName:`UI ${label} storage ${suffix}`,planName:`UI ${label} plan ${suffix}`,bucket:`steelkeep-ui-${engine}-${suffix}`,prefix:`ui/${engine}/${suffix}`}
 }
 async function pgConnection(database:string,user:string,password:string){
   const db=new pg.Client({host:'127.0.0.1',port:54372,database,user,password,connectionTimeoutMillis:5000,statement_timeout:15000,query_timeout:17000})
@@ -63,8 +94,8 @@ async function provision(f:Fixture){
       if(Math.floor(Number(version.rows[0].version)/10000)!==17)throw new Error()
       await admin.query(`CREATE ROLE ${f.reader} LOGIN PASSWORD '${f.readerPassword}'`)
       await admin.query(`CREATE ROLE ${f.writer} LOGIN PASSWORD '${f.writerPassword}'`)
-      await admin.query(`CREATE DATABASE ${f.sourceDatabase} OWNER fixture_admin`)
-      await admin.query(`CREATE DATABASE ${f.targetDatabase} OWNER ${f.writer}`)
+      await admin.query(`CREATE DATABASE "${f.sourceDatabase.replaceAll('"','""')}" OWNER fixture_admin`)
+      await admin.query(`CREATE DATABASE "${f.targetDatabase.replaceAll('"','""')}" OWNER ${f.writer}`)
       source=await pgConnection(f.sourceDatabase,'fixture_admin','local-fixture-only')
       await source.query(`
         CREATE TABLE projects(id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,name text NOT NULL UNIQUE);
@@ -74,7 +105,7 @@ async function provision(f:Fixture){
         INSERT INTO projects(name) VALUES('Synthetic UI recovery fixture');
         INSERT INTO entries(project_id,body,amount,binary_value)
           SELECT 1,CASE WHEN n=1 THEN 'Русский текст, café, 🚀' ELSE 'Synthetic UI record '||n END,n*1.25,decode('00ff007f','hex')||decode(lpad(to_hex(n),8,'0'),'hex') FROM generate_series(1,1000) n;
-        GRANT CONNECT ON DATABASE ${f.sourceDatabase} TO ${f.reader};
+        GRANT CONNECT ON DATABASE "${f.sourceDatabase.replaceAll('"','""')}" TO ${f.reader};
         GRANT USAGE ON SCHEMA public TO ${f.reader};
         GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${f.reader};
         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${f.reader};
@@ -104,6 +135,16 @@ async function provision(f:Fixture){
   }
 }
 function storage(){return new S3Client({endpoint:'http://127.0.0.1:54373',region:'us-east-1',forcePathStyle:true,credentials:{accessKeyId:'steelkeep-local',secretAccessKey:'local-s3-fixture-only'}})}
+async function installationToken(){
+  const path=join(privateRoot,'token')
+  if(firstBackup){
+    const directory=await lstat(privateRoot),file=await lstat(path)
+    if(!directory.isDirectory()||directory.isSymbolicLink()||(directory.mode&0o777)!==0o700||await realpath(privateRoot)!==privateRoot||!file.isFile()||file.isSymbolicLink()||file.nlink!==1||(file.mode&0o777)!==0o600||file.size>256||await realpath(path)!==path)throw new Error('The dedicated proof requires its exact private directory and regular token file.')
+  }
+  const token=(await readFile(path,'utf8')).trim()
+  if(firstBackup?!/^[a-f0-9]{64}$/.test(token):token.length<32)throw new Error('The installation token is missing or invalid.')
+  return token
+}
 async function secretInput(locator:Locator,key:string){
   // Secret is returned by a private in-memory binding, never a fill(value) API
   // parameter that Playwright can include in an action failure call log.
@@ -122,6 +163,39 @@ async function response(page:Page,path:string,action:()=>Promise<unknown>):Promi
     if(!result.ok())throw new Error('A real UI command was refused by the API; inspect the visible safe error. Request credentials are omitted.')
     return result
   }catch(error){void pending.catch(()=>{});throw error}
+}
+async function enterWorkspace(page:Page,secrets:Map<string,string>){
+  await page.goto('/')
+  const owners=firstBackup?await metadata('SELECT name,email FROM owner_account'):undefined
+  if(firstBackup&&owners?.length===0){
+    const issued=await fetch(origin+'/api/v1/auth/setup-link',{method:'POST',headers:{authorization:'Bearer '+secrets.get('installation-token')},redirect:'error',signal:AbortSignal.timeout(10000)})
+    if(issued.status!==201)throw new Error('Dedicated setup-link issuance was refused; response and credentials are omitted.')
+    const link=await issued.json() as {code:string}
+    if(!/^ss_[a-f0-9]{64}$/.test(link.code))throw new Error('Dedicated setup capability has an invalid format.')
+    secrets.set('setup-url',origin+'/#setup='+link.code)
+    secrets.set('owner-name','Synthetic platform proof owner');secrets.set('owner-email','platform-proof-'+randomBytes(8).toString('hex')+'@example.test')
+    secrets.set('owner-password','Synthetic platform '+randomBytes(24).toString('hex'))
+    await page.evaluate(async()=>{
+      const provide=(window as unknown as {__steelkeepUiFixtureSecret:(key:string)=>Promise<string>}).__steelkeepUiFixtureSecret
+      window.history.replaceState(null,'',await provide('setup-url'));window.location.reload()
+    })
+    await expect(page.getByRole('heading',{name:'Create your owner account',exact:true})).toBeVisible()
+    expect(await page.evaluate(()=>window.location.hash==='')).toBe(true)
+    await expect(page.locator('input[name="installationKey"]')).toHaveCount(0)
+    for(const [field,key]of [['name','owner-name'],['email','owner-email'],['password','owner-password'],['confirmPassword','owner-password']])await secretInput(page.locator(`input[name="${field}"]`),key)
+    await response(page,'/api/v1/auth/setup',()=>page.locator('.auth-card form').getByRole('button',{name:'Create account',exact:true}).click())
+    const [owner]=await metadata('SELECT name,email FROM owner_account')
+    if(owner?.name!==secrets.get('owner-name')||owner.email!==secrets.get('owner-email'))throw new Error('Synthetic owner creation did not correlate with the dedicated metadata database.')
+  }else{
+    // The main preview never creates an owner or requests its password.
+    await response(page,'/api/v1/session',()=>page.evaluate(async()=>{
+      const provide=(window as unknown as {__steelkeepUiFixtureSecret:(key:string)=>Promise<string>}).__steelkeepUiFixtureSecret
+      const result=await fetch('/api/v1/session',{method:'POST',credentials:'same-origin',headers:{Authorization:'Bearer '+await provide('installation-token')}})
+      if(result.status!==204)throw new Error('The authorized installation session exchange failed; credential details omitted.')
+    }))
+    await page.reload()
+  }
+  await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
 }
 async function navigate(page:Page,label:string){await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:label,exact:true}).click();await expect(page.getByRole('heading',{name:label,exact:true,level:1})).toBeVisible()}
 async function createDatabaseConnection(page:Page,f:Fixture,target:boolean){
@@ -180,7 +254,7 @@ async function waitForJob(page:Page,id:string,operation:'backup'|'restore'){
   return dialog
 }
 
-test.beforeAll(async()=>{await guardMetadata()})
+test.beforeAll(async()=>{await guardDedicatedRuntime();await guardMetadata()})
 test.afterEach(async({page},info)=>{
   // Neither Playwright's automatic screenshot recorder nor auth DOM snapshots
   // are enabled. Clear credentials, then attach only a masked failure PNG.
@@ -190,30 +264,25 @@ test.afterEach(async({page},info)=>{
   }
 })
 
-for(const engine of ['postgres','mariadb'] as const)test(`${engine}: real UI backup and reviewed restore with independent data evidence`,async({page})=>{
+for(const engine of (firstBackup?['postgres']:['postgres','mariadb']) as Engine[])test(`${engine}: real UI backup and reviewed restore with independent data evidence`,async({page})=>{
   const f=definition(engine)
+  const token=await installationToken()
+  const proofRecord:Record<string,unknown>={suite:'synthetic-ui-firstbackup',engine,sourceDatabase:f.sourceDatabase,targetDatabase:f.targetDatabase,reader:f.reader,writer:f.writer,bucket:f.bucket,prefix:f.prefix,status:'preparing'}
+  const recordPath=join(privateRoot,'native-ui-result.json')
+  if(firstBackup){await guardMetadata();await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600,flag:'wx'})}
   await provision(f)
-  const s3=storage(),secrets=new Map<string,string>([['installation-token',(await readFile(join(workspace,'.steelkeep','token'),'utf8')).trim()],['source-password',f.readerPassword],['target-password',f.writerPassword],['s3-access','steelkeep-local'],['s3-secret','local-s3-fixture-only']])
+  const s3=storage(),secrets=new Map<string,string>([['installation-token',token],['source-password',f.readerPassword],['target-password',f.writerPassword],['s3-access','steelkeep-local'],['s3-secret','local-s3-fixture-only']])
   let sourcePG:pg.Client|undefined,targetPG:pg.Client|undefined,sourceMaria:MariaConnection|undefined,targetMaria:MariaConnection|undefined
   try{
     if((secrets.get('installation-token')?.length??0)<32)throw new Error('The installation token is missing or invalid.')
     await s3.send(new CreateBucketCommand({Bucket:f.bucket}),{abortSignal:AbortSignal.timeout(15000)})
     await page.exposeBinding('__steelkeepUiFixtureSecret',({frame},key:string)=>{
-      if(frame!==page.mainFrame()||new URL(frame.url()).origin!=='http://127.0.0.1:4310'||!secrets.has(key))throw new Error('Credential binding denied outside the fixed local main frame.')
+      if(frame!==page.mainFrame()||new URL(frame.url()).origin!==origin||!secrets.has(key))throw new Error('Credential binding denied outside the fixed local main frame.')
       return secrets.get(key)!
     })
-    await page.goto('/')
-    // No owner password is needed for operational recovery acceptance. The
-    // installation exchange issues a real opaque session after owner setup.
-    await response(page,'/api/v1/session',()=>page.evaluate(async()=>{
-      const provide=(window as unknown as {__steelkeepUiFixtureSecret:(key:string)=>Promise<string>}).__steelkeepUiFixtureSecret
-      const credential=await provide('installation-token')
-      const result=await fetch('/api/v1/session',{method:'POST',credentials:'same-origin',headers:{Authorization:'Bearer '+credential}})
-      if(result.status!==204)throw new Error('The authorized installation session exchange failed; credential details omitted.')
-    }))
-    await page.reload()
-    await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
+    await enterWorkspace(page,secrets)
     const sourceId=await createDatabaseConnection(page,f,false),targetId=await createDatabaseConnection(page,f,true),storageId=await createStorageConnection(page,f)
+    if(firstBackup){Object.assign(proofRecord,{sourceId,targetId,storageId,status:'connections-created'});await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600})}
     await navigate(page,'Backup plans');await page.locator('.page-header').getByRole('button',{name:'Create plan',exact:true}).click()
     const planDialog=page.getByRole('dialog',{name:'Create backup plan',exact:true})
     await planDialog.getByLabel('Plan name',{exact:true}).fill(f.planName)
@@ -226,10 +295,12 @@ for(const engine of ['postgres','mariadb'] as const)test(`${engine}: real UI bac
     const planCard=page.locator('section.plan').filter({has:page.getByRole('heading',{name:f.planName,exact:true})})
     await expect(planCard).toBeVisible();await expect(planCard).toContainText('Manual only')
     const start=await response(page,`/api/v1/plans/${plan.id}/run`,()=>planCard.getByRole('button',{name:'Run backup',exact:true}).click()),backup=await start.json() as {id:string}
+    if(firstBackup){Object.assign(proofRecord,{planId:plan.id,backupRunId:backup.id,status:'backup-started'});await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600})}
     const backupDialog=await waitForJob(page,backup.id,'backup')
     await backupDialog.getByRole('button',{name:'Close dialog',exact:true}).click()
     const [artifactRow]=await metadata('SELECT id,source_id,storage_id,run_id,object_key,size::text,sha256,engine,checked_at FROM artifacts WHERE run_id=$1',[backup.id]),artifact=artifactRow as unknown as Artifact
     if(!artifact||artifact.source_id!==sourceId||artifact.storage_id!==storageId||artifact.engine!==engine||Number(artifact.size)<=0||Number(artifact.size)>16*1024*1024)throw new Error('The actual guarded metadata did not publish this fixture backup.')
+    if(firstBackup){Object.assign(proofRecord,{artifactId:artifact.id,objectKey:artifact.object_key,status:'backup-succeeded'});await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600})}
     await navigate(page,'Snapshots')
     const snapshot=page.getByRole('row').filter({has:page.getByText(f.sourceName,{exact:true})})
     await expect(snapshot).toBeVisible();await expect(snapshot.getByText('Not restored',{exact:true})).toBeVisible();await expect(snapshot.getByText('Recorded at upload',{exact:true})).toBeVisible()
@@ -262,6 +333,7 @@ for(const engine of ['postgres','mariadb'] as const)test(`${engine}: real UI bac
     await expect(restoreDialog.getByRole('button',{name:'Start restore',exact:true})).toBeDisabled()
     await restoreDialog.getByRole('checkbox',{name:'Restore this backup into the target database shown above.',exact:true}).check()
     const restoreStarted=await response(page,'/api/v1/restores/start',()=>restoreDialog.getByRole('button',{name:'Start restore',exact:true}).click()),restore=await restoreStarted.json() as {id:string}
+    if(firstBackup){Object.assign(proofRecord,{restoreRunId:restore.id,status:'restore-started'});await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600})}
     const job=await waitForJob(page,restore.id,'restore')
     if(engine==='postgres'){
       sourcePG=await pgConnection(f.sourceDatabase,f.reader,f.readerPassword);targetPG=await pgConnection(f.targetDatabase,f.writer,f.writerPassword)
@@ -300,6 +372,7 @@ for(const engine of ['postgres','mariadb'] as const)test(`${engine}: real UI bac
     await job.getByRole('button',{name:'Close dialog',exact:true}).click();await navigate(page,'Snapshots')
     const restoredSnapshot=page.getByRole('row').filter({has:page.getByText(f.sourceName,{exact:true})})
     await expect(restoredSnapshot).toContainText('Validation: passed')
+    if(firstBackup){proofRecord.status='passed';await writeFile(recordPath,JSON.stringify(proofRecord,null,2)+'\n',{mode:0o600})}
   }finally{
     secrets.clear();s3.destroy();await sourcePG?.end().catch(()=>{});await targetPG?.end().catch(()=>{});await sourceMaria?.end().catch(()=>{});await targetMaria?.end().catch(()=>{})
   }
