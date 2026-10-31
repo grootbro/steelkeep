@@ -3,20 +3,13 @@ import {Eye,EyeOff,LoaderCircle,LockKeyhole,Moon,Sun,ShieldCheck} from 'lucide-r
 import {useQuery} from '@tanstack/react-query'
 import {api,ApiError,queryClient} from './state'
 import {Brand} from './brand'
+import {authDestination} from './auth-destination'
 
 export type OwnerUser={id:string;name:string;email:string}
 export type AuthStatus={setupRequired:boolean;authenticated:boolean;user:OwnerUser|null;bootstrapAuthorized:boolean}
 export const authQuery={queryKey:['auth-status'],queryFn:()=>api<AuthStatus>('/auth/status'),retry:false as const}
 
-function destination(){
-  const current=new URL(window.location.href),next=current.searchParams.get('next')
-  const candidate=next??current.pathname
-  if(!candidate.startsWith('/')||candidate.startsWith('//')||candidate.includes('\\'))return '/'
-  const url=new URL(candidate,window.location.origin)
-  if(url.origin!==window.location.origin||!['/','/overview','/connections','/plans','/backups','/jobs','/settings'].includes(url.pathname))return '/'
-  return url.pathname+url.search+url.hash
-}
-function enterWorkspace(){queryClient.clear();window.location.assign(destination())}
+function enterWorkspace(){queryClient.clear();window.location.assign(authDestination(window.location.href))}
 export function returnToSignIn(passwordChanged=false){queryClient.clear();window.location.assign(passwordChanged?'/?signedOut=password-changed':window.location.pathname)}
 
 function PasswordField({label,name,autoComplete,minLength,help,disabled=false}:{label:string;name:string;autoComplete:'current-password'|'new-password';minLength?:number;help?:string;disabled?:boolean}){

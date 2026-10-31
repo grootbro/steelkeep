@@ -10,6 +10,7 @@ MIT-licensed views, rewritten for React/TanStack Start. Source commit:
 - resources/views/livewire/dashboard/snapshots-card.blade.php
 - resources/views/livewire/dashboard/jobs-activity-chart.blade.php
 - resources/views/livewire/dashboard/latest-jobs.blade.php
+- resources/views/livewire/database-server/show.blade.php (profile composition, rewritten in React)
 
 Upstream: https://github.com/David-Crty/databasement
 
@@ -54,4 +55,4 @@ That NuGet artifact has Microsoft Software License Terms, not this repository's 
 license: https://www.nuget.org/packages/Microsoft.SqlServer.DacFx/170.5.96/License.
 An operator provisioning that optional profile must retain the actual package terms,
 notices and dependencies and review applicable distribution obligations. The helper
-has not been restored, compiled or executed during the code-only implementation phase.
+was not executed during the initial code-only phase. A later authorized checkpoint compiled it; the owner explicitly accepted Microsoft SQL Server terms for the isolated A-server acceptance stand on 31 October 2026. Runtime evidence is recorded separately.

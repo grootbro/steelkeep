@@ -94,8 +94,8 @@ export function ConnectionForm({connection,onDone,onReload}:{connection?:Connect
     <div className="form-bottom"><span><LockKeyhole size={12}/>{kind==='sqlite'?'Restricted local file access':'Encrypted credentials'}</span><Submit busy={busy}>{editing?'Save changes':'Save connection'}</Submit></div>
   </fieldset></form>
 }
-export function PlanForm({connections,plan,onDone}:{connections:Connection[];plan?:Plan;onDone:()=>void}){
-  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[source,setSource]=useState(plan?.source_id??''),[storage,setStorage]=useState(plan?.storage_id??''),[scheduled,setScheduled]=useState(!!plan?.cron)
+export function PlanForm({connections,plan,initialConnection,onDone}:{connections:Connection[];plan?:Plan;initialConnection?:Connection;onDone:()=>void}){
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[source,setSource]=useState(plan?.source_id??(initialConnection&&initialConnection.kind!=='s3'&&!initialConnection.config.restoreTarget?initialConnection.id:'')),[storage,setStorage]=useState(plan?.storage_id??(initialConnection?.kind==='s3'?initialConnection.id:'')),[scheduled,setScheduled]=useState(!!plan?.cron)
   const [cron,setCron]=useState(plan?.cron??'0 2 * * *'),[timezone,setTimezone]=useState(plan?.timezone??Intl.DateTimeFormat().resolvedOptions().timeZone)
   const sources=connections.filter(c=>c.kind!=='s3'&&!c.config.restoreTarget),volumes=connections.filter(c=>c.kind==='s3')
   const sourceConnection=connections.find(connection=>connection.id===source),storageConnection=connections.find(connection=>connection.id===storage)

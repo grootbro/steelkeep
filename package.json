@@ -16,7 +16,7 @@
     "seed:fixture": "bun scripts/seed-fixture.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:acceptance": "tsc --noEmit --project tsconfig.acceptance.json",
-    "test": "bun test tests/security.test.ts tests/resources.test.ts tests/pending-backups.test.ts tests/manifest.test.ts tests/mongodb-lock-state.test.ts tests/sql-grants.test.ts tests/storage-errors.test.ts tests/owner-auth.test.ts tests/setup-owner.test.ts",
+    "test": "bun test tests/security.test.ts tests/resources.test.ts tests/pending-backups.test.ts tests/manifest.test.ts tests/mongodb-lock-state.test.ts tests/sql-grants.test.ts tests/storage-errors.test.ts tests/owner-auth.test.ts tests/setup-owner.test.ts tests/auth-destination.test.ts",
     "test:integration": "STEELKEEP_ACCEPTANCE=synthetic-local bun test tests/api.integration.test.ts tests/connections.integration.test.ts tests/artifact-availability.integration.test.ts",
     "infra:up": "docker compose up -d --wait",
     "db:migrate": "bun server/migrate.ts"
