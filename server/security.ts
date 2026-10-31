@@ -29,6 +29,12 @@ export function identifier(value: string): string {
   return value
 }
 
+export function databaseName(value:string):string {
+  // Keep conninfo, CLI options and Mongo namespace patterns out of a database name.
+  if(typeof value!=='string'||!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$/.test(value))throw new AppError('INVALID_DATABASE_NAME','Use 1–63 letters, digits, underscores or hyphens; the first character cannot be a hyphen.')
+  return value
+}
+
 export function allowedHost(host: string): void {
   if (!config.allowedHosts().includes(host)) throw new AppError('ENDPOINT_NOT_ALLOWED', 'This endpoint is not in the installation allowlist.', 403)
 }

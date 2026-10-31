@@ -15,7 +15,9 @@
 .collection-panel .connection-name strong{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis}
 .collection-panel .endpoint{max-width:290px;overflow:hidden;text-overflow:ellipsis}
 .collection-panel .endpoint small{overflow:hidden;text-overflow:ellipsis}
-.collection-panel .badge.blocked{margin-left:7px}
+.collection-panel .badge.protected,.collection-panel .badge.on_hold{margin-left:7px}
+.collection-panel .badge.protected{color:#a7d4ff;background:#283e59}
+.collection-panel .badge.on_hold{color:#f6d58c;background:#4a3c27}
 .first-backup{margin-bottom:24px;background:#222936;border:1px solid #3c3b5b;border-radius:12px;padding:20px 22px}
 .first-backup-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .first-backup-heading h2{font-size:16px}

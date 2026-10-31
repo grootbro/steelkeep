@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os'
 import {join,isAbsolute} from 'node:path'
 import mssql from 'mssql'
 import type {AdapterOptions,EngineAdapter,Identity,Manifest} from './types'
-import {AppError,allowedHost,identifier} from '../security'
+import {AppError,allowedHost,databaseName} from '../security'
 import {assertArchiveSize,maxArchiveBytes,runTool,toolEnv} from '../process'
 
 type Inspection={identity:Identity;empty:boolean;restricted:boolean;manifest?:Manifest;toolVersion:string;packageVersion?:string}
@@ -14,7 +14,7 @@ export function createMssqlAdapter(options:AdapterOptions):EngineAdapter {
   const failure=new AbortController()
   const signal=AbortSignal.any([options.signal,failure.signal])
   const database=String(config.database??'')
-  identifier(database);allowedHost(String(config.host??''))
+  databaseName(database);allowedHost(String(config.host??''))
   if(['master','model','msdb','tempdb','steelkeep'].includes(database.toLowerCase()))throw new AppError('PROTECTED_DATABASE','SQL Server system and metadata databases are protected.')
   if(!Number.isInteger(config.port)||Number(config.port)<1||Number(config.port)>65535||!config.user||typeof secret.password!=='string'||!secret.password)throw new AppError('INVALID_CONNECTION','SQL Server requires a valid TCP endpoint and SQL authentication.')
   let toolVersion=''

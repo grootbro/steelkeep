@@ -7,7 +7,7 @@ import { CronExpressionParser } from 'cron-parser'
 import { sql, type Kysely, type Selectable } from 'kysely'
 import type { Schema } from './db'
 import type { ConnectionInput, ConnectionUpdateInput, PlanInput, PlanUpdateInput } from './contracts'
-import { allowedHost, identifier, seal, unseal, AppError, safeFailure } from './security'
+import { allowedHost, databaseName, identifier, seal, unseal, AppError, safeFailure } from './security'
 import {config} from './config'
 import {resourceKey,sourceAdmissionKey,sourceBlockMatches} from './resources'
 import {sourceBlocked} from './source-locks'
@@ -89,7 +89,12 @@ export class Services {
  readonly agents:AgentServices
  constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db)}
  authenticate(request:Request){return authenticateRequest(request,this.db)}
- sourceBlocks(){return this.db.selectFrom('source_blocks').select(['resource_key','server_identity','run_id','state','reason_code','created_at','updated_at']).orderBy('created_at','desc').limit(100).execute()}
+ sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
+  .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])
+  .orderBy('source_blocks.created_at','desc').orderBy('source_blocks.resource_key','desc').limit(100).execute()}
+ targetBlocks(){return this.db.selectFrom('target_blocks').innerJoin('runs','runs.id','target_blocks.run_id').innerJoin('connections','connections.id','target_blocks.target_id')
+  .select(['target_blocks.target_id','connections.name as target_name','connections.kind as target_kind','target_blocks.resource_key','target_blocks.run_id','target_blocks.reason','target_blocks.created_at','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at',sql<'passed'|'failed'|'running'|null>`CASE WHEN runs.validation->>'status'='passed' AND runs.validation->'passed'='true'::jsonb THEN 'passed' WHEN runs.validation->>'status'='failed' OR runs.validation->'passed'='false'::jsonb THEN 'failed' WHEN runs.validation->>'status'='running' THEN 'running' ELSE NULL END`.as('validation_status')])
+  .orderBy('target_blocks.created_at','desc').orderBy('target_blocks.run_id','desc').limit(100).execute()}
  async reconcileNativeOperation(connectionId:string,operationId:string,actor='installation-owner'){
   validId(operationId)
   const connection=await this.connection(connectionId)
@@ -119,12 +124,12 @@ export class Services {
    safe={engine:'redis',host:input.host,port:input.port??6379,database:'redis:'+input.dbIndex,dbIndex:input.dbIndex,user:input.user??'default',tls:input.tls??true,restoreTarget:input.restoreTarget??false,allowGlobalReadLock:input.allowGlobalReadLock??false};secret={password:input.password}
   }else if(input.kind!=='s3'){
    if(!input.host||!input.database||!input.user||!input.password)throw new AppError('INVALID_CONNECTION','Host, database, user and password are required.')
-   allowedHost(input.host);identifier(input.database)
+   allowedHost(input.host);databaseName(input.database)
    if(input.port!==undefined&&(!Number.isInteger(input.port)||input.port<1||input.port>65535))throw new AppError('INVALID_PORT','Use a valid integer TCP port.')
    if(!/^[a-zA-Z_][a-zA-Z0-9_.@-]{0,79}$/.test(input.user))throw new AppError('INVALID_CONNECTION','Invalid database user.')
    const ports={postgres:5432,mysql:3306,mariadb:3306,mongodb:27017,mssql:1433,clickhouse:input.tls===false?8123:8443}
    safe={engine:input.kind,host:input.host,port:input.port??ports[input.kind],database:input.database,user:input.user,tls:input.tls??true,restoreTarget:input.restoreTarget??false}
-   if(input.kind==='mongodb'){const authDatabase=input.authDatabase??'admin';identifier(authDatabase);safe.authDatabase=authDatabase;safe.allowGlobalReadLock=input.allowGlobalReadLock??false}
+   if(input.kind==='mongodb'){const authDatabase=input.authDatabase??'admin';databaseName(authDatabase);safe.authDatabase=authDatabase;safe.allowGlobalReadLock=input.allowGlobalReadLock??false}
    if(input.kind==='mysql'||input.kind==='mariadb')safe.allowGlobalReadLock=input.allowGlobalReadLock??false
    if(input.kind==='clickhouse'){
     identifier(input.backupDisk)

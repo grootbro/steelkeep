@@ -4,6 +4,17 @@ import {mysqlGrantScope,mysqlRestoreGrantsSafe,mysqlMetadataPermissions} from '.
 const grant=(scope:string,permissions='SELECT, SHOW VIEW, TRIGGER, EVENT, EXECUTE')=>`GRANT ${permissions} ON ${scope} TO \`restore\`@\`%\``
 const usage=grant('*.*','USAGE')
 
+test('hyphen and leading-digit database grants retain exact target scope',()=>{
+ for(const database of ['my-app','123db']){
+  const exact=grant('`'+database+'`.*')
+  for(const partialRevokes of [false,true]){
+   expect(mysqlRestoreGrantsSafe([usage,exact],database,partialRevokes)).toBe(true)
+   expect(mysqlMetadataPermissions([exact],database,partialRevokes)).toBe(true)
+   expect(mysqlRestoreGrantsSafe([exact],'other-'+database,partialRevokes)).toBe(false)
+  }
+ }
+})
+
 test('quoted database wildcards remain unsafe unless escaped or partial revokes is ON',()=>{
   for(const database of ['restore_one','restore%one']){
     const raw=grant('`'+database+'`.*'),escaped=grant('`'+database.replace(/[%_]/g,'\\$&')+'`.*')

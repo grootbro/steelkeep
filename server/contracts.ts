@@ -51,7 +51,9 @@ export const agentResponse=t.Object({id:t.String(),name:t.String(),description:t
 export const tokenResponse=t.Object({id:t.String(),agent_id:t.String(),name:t.String(),scopes:t.Array(scopeInput),expires_at:dateResponse,created_at:dateResponse,revoked_at:dateResponse,last_used_at:dateResponse,issuer_actor:t.String()})
 export const issuedTokenResponse=t.Object({id:t.String(),agentId:t.String(),name:t.String(),scopes:t.Array(scopeInput),expiresAt:t.String(),token:t.String(),notice:t.String()})
 export const auditResponse=t.Object({id:t.Union([t.String(),t.Number()]),actor:t.String(),action:t.String(),subject_id:t.Nullable(t.String()),created_at:dateResponse})
-export const sourceBlockResponse=t.Object({resource_key:t.String(),server_identity:t.String(),run_id:t.String(),state:t.String(),reason_code:t.Nullable(t.String()),created_at:dateResponse,updated_at:dateResponse})
+const recoveryRunSummary={run_status:t.String(),run_phase:t.String(),run_error_code:t.Nullable(t.String()),run_finished_at:dateResponse}
+export const sourceBlockResponse=t.Object({resource_key:t.String(),server_identity:t.String(),run_id:t.String(),state:t.String(),reason_code:t.Nullable(t.String()),created_at:dateResponse,updated_at:dateResponse,source_id:t.String(),source_name:t.String(),source_kind:t.String(),...recoveryRunSummary})
+export const targetBlockResponse=t.Object({target_id:t.String(),target_name:t.String(),target_kind:t.String(),resource_key:t.String(),run_id:t.String(),reason:t.String(),created_at:dateResponse,...recoveryRunSummary,validation_status:t.Nullable(t.Union([t.Literal('passed'),t.Literal('failed'),t.Literal('running')]))})
 
 export const artifactAvailabilityResponse=t.Object({id:t.String(),availability:t.Union([t.Literal('present'),t.Literal('missing'),t.Literal('changed'),t.Literal('unknown')]),checkedAt:dateResponse,verification:t.Literal('object-head-only'),checks:t.Object({objectExists:t.Nullable(t.Boolean()),sizeMatches:t.Nullable(t.Boolean()),metadataSha256Matches:t.Nullable(t.Boolean())}),reason:t.String(),message:t.String(),stale:t.Boolean()})
 export const ownerUserResponse=t.Object({id:t.String(),name:t.String(),email:t.String()})

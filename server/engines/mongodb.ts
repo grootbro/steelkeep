@@ -3,7 +3,7 @@ import {writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {MongoClient,BSON,Binary,DBRef,type Db} from 'mongodb'
 import type {AdapterOptions,EngineAdapter,Manifest,SourceLockContext,SourceLockHooks} from './types'
-import {AppError,allowedHost,identifier} from '../security'
+import {AppError,allowedHost,databaseName} from '../security'
 import {assertArchiveSize,maxArchiveBytes,runTool,toolEnv} from '../process'
 
 /**
@@ -36,7 +36,7 @@ const hash=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex
 const plainObject=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value)
 
 function checkedConfig(config:MongoConfig,secret:MongoSecret){
-  allowedHost(config.host);identifier(config.database);identifier(config.authDatabase??'admin')
+  allowedHost(config.host);databaseName(config.database);databaseName(config.authDatabase??'admin')
   if(['admin','local','config'].includes(config.database.toLowerCase()))fail('PROTECTED_DATABASE','MongoDB system databases cannot be backup sources or restore targets.')
   if(!Number.isInteger(config.port)||config.port<1||config.port>65535)fail('INVALID_PORT','Use a valid MongoDB TCP port.')
   if(!/^[A-Za-z0-9_.:-]+$/.test(config.host)||/[\r\n\0]/.test(config.user+secret.password)||!config.user||!secret.password)fail('INVALID_CREDENTIAL','Use a valid standalone MongoDB host, username and password without control characters.')
@@ -342,7 +342,7 @@ export class MongoAdapter extends MongoSession implements EngineAdapter {
     if(expected.engine!=='mongodb'||expected.format!==1)fail('MANIFEST_UNAVAILABLE','A trusted MongoDB source manifest is required.')
     const source=expected.database
     if(!source)fail('MANIFEST_UNAVAILABLE','The trusted MongoDB source namespace is required for restore.')
-    identifier(source)
+    databaseName(source)
     if(source.toLowerCase()===this.config.database.toLowerCase())fail('SOURCE_TARGET_CONFLICT','MongoDB restore requires a distinct target database name.')
     if(!this.config.restoreTarget)fail('TARGET_NOT_DESIGNATED','Choose a designated MongoDB restore target.')
     const tool=await mongoToolVersion('mongorestore',signal),credentials=await mongoCredentials(this.config,this.credentials,directory)

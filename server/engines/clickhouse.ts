@@ -3,7 +3,7 @@ import {constants} from 'node:fs'
 import {open,realpath,lstat,statfs,mkdir,readdir,rm} from 'node:fs/promises'
 import {isAbsolute,relative,join,normalize} from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
-import {AppError,allowedHost,identifier} from '../security'
+import {AppError,allowedHost,databaseName,identifier} from '../security'
 import {assertArchiveSize,maxArchiveBytes} from '../process'
 import {assertProtectedDatabase} from './database'
 import type {AdapterOptions,EngineAdapter,EnginePhase,Identity,Manifest} from './types'
@@ -33,6 +33,7 @@ const maxRows=5_000_000
 const maxLineBytes=512*1024
 const metadataLimit=2*1024*1024
 const quote=(value:string)=>'`'+identifier(value)+'`'
+const quoteDatabase=(value:string)=>'`'+databaseName(value)+'`'
 const literal=(value:string)=>"'"+value.replaceAll('\\','\\\\').replaceAll("'","\\'")+"'"
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const fail=(code:string,message:string,status?:number):never=>{throw new AppError(code,message,status)}
@@ -59,7 +60,7 @@ export class ClickHouseAdapter implements EngineAdapter {
   private async checkpoint(signal=this.options.signal){abortCheck(signal);if(this.failureSignal.aborted)throw this.failureSignal.reason;await this.options.checkpoint?.();abortCheck(signal)}
   private endpoint(){
     const c=this.config
-    allowedHost(c.host);identifier(c.database);identifier(c.backupDisk);assertProtectedDatabase(c.database)
+    allowedHost(c.host);databaseName(c.database);identifier(c.backupDisk);assertProtectedDatabase(c.database)
     if(c.backupDisk.toLowerCase()==='default')fail('BACKUP_DISK_REQUIRED','Use a dedicated local backup disk rather than the default data disk.')
     if(['system','information_schema','default'].includes(c.database.toLowerCase()))fail('PROTECTED_DATABASE','Use a dedicated ClickHouse user database, excluding system, default and installation metadata databases.')
     if(!/^[A-Za-z0-9_.:-]+$/.test(c.host)||!Number.isInteger(c.port)||c.port<1||c.port>65535)fail('INVALID_ENDPOINT','Use an allowlisted ClickHouse HTTP(S) host and TCP port.')
@@ -150,7 +151,7 @@ export class ClickHouseAdapter implements EngineAdapter {
     return identity
   }
   private async requireGrant(privilege:string){
-    const rows=await this.all(`CHECK GRANT ${privilege} ON ${quote(this.config.database)}.*`)
+    const rows=await this.all(`CHECK GRANT ${privilege} ON ${quoteDatabase(this.config.database)}.*`)
     if(rows.length!==1||Number(Object.values(rows[0]!)[0])!==1)fail('DATABASE_PERMISSIONS','The ClickHouse role lacks required whole-database grants; partial visibility cannot prove a complete backup or empty target.')
   }
   async restrictedRestoreRole(){
@@ -228,7 +229,7 @@ export class ClickHouseAdapter implements EngineAdapter {
       const projection=columns.map(column=>quote(String(column.name))).join(',')
       const binary=`formatRow('RowBinary',${projection})`
       let count=0n,sum=0n,squares=0n,bytes=0n
-      for await(const row of this.rows(`SELECT hex(SHA256(${binary})) AS digest,toString(length(${binary})) AS bytes FROM ${quote(this.config.database)}.${quote(name)} FORMAT JSONEachRow`,AbortSignal.any([this.options.signal,this.failureSignal,AbortSignal.timeout(5*60*1000)]),768*1024*1024,{wait_end_of_query:'0'})){
+      for await(const row of this.rows(`SELECT hex(SHA256(${binary})) AS digest,toString(length(${binary})) AS bytes FROM ${quoteDatabase(this.config.database)}.${quote(name)} FORMAT JSONEachRow`,AbortSignal.any([this.options.signal,this.failureSignal,AbortSignal.timeout(5*60*1000)]),768*1024*1024,{wait_end_of_query:'0'})){
         if(typeof row.digest!=='string'||!/^[0-9a-f]{64}$/i.test(row.digest))fail('INVALID_ENGINE_RESPONSE','ClickHouse row digest output was malformed or interrupted.')
         const length=uint(row.bytes)
         if(length>8n*1024n*1024n)fail('RESOURCE_LIMIT','ClickHouse validation limits each serialized row to 8 MiB.')
@@ -367,7 +368,7 @@ export class ClickHouseAdapter implements EngineAdapter {
     const journal=this.nativeJournal('backup'),archive=join(mounted.root,journal.archive)
     try{
       await phase('dumping','Starting a native asynchronous ClickHouse backup with a durable operation ID. No database-wide cross-table snapshot is claimed.')
-      await this.runNative(journal,`BACKUP DATABASE ${quote(this.config.database)} TO Disk(${literal(this.config.backupDisk)},${literal(journal.archive)}) SETTINGS id=${literal(journal.id)},check_parts=true ASYNC`,signal)
+      await this.runNative(journal,`BACKUP DATABASE ${quoteDatabase(this.config.database)} TO Disk(${literal(this.config.backupDisk)},${literal(journal.archive)}) SETTINGS id=${literal(journal.id)},check_parts=true ASYNC`,signal)
       await phase('manifest','Native backup finished. Rechecking schema and row digests; source changes invalidate this backup.')
       const after=await this.manifest()
       if(digest(manifest.objects)!==digest(after.objects)||digest(manifest.data)!==digest(after.data))fail('SOURCE_CHANGED','ClickHouse source schema or rows changed across capture. Reestablish maintenance quiescence before a new backup.')
@@ -377,7 +378,7 @@ export class ClickHouseAdapter implements EngineAdapter {
   }
   async restore(file:string,_dir:string,signal:AbortSignal,expected:Manifest){
     if(expected.format!==1||expected.engine!==this.engine||expected.objects.profile!=='25.8-plain-MergeTree-quiescent-v1')fail('MANIFEST_UNAVAILABLE','A trusted installation-created ClickHouse profile manifest is required.')
-    const source=identifier(expected.database)
+    const source=databaseName(expected.database)
     if(source.toLowerCase()===this.config.database.toLowerCase()||expected.binding===this.bound?.binding)fail('SOURCE_TARGET_CONFLICT','ClickHouse restore requires a separate precreated empty database, never the recorded source.')
     await this.restrictedRestoreRole();await this.profile();await this.sharedRoot();await this.noPendingOperations()
     if(!await this.empty())fail('TARGET_NOT_EMPTY','The precreated Atomic ClickHouse restore target must contain no tables, detached tables or dictionaries.')
@@ -389,7 +390,7 @@ export class ClickHouseAdapter implements EngineAdapter {
       await this.copy(file,archive,0o640,signal)
       await this.checkpoint(signal);await this.identity();await this.restrictedRestoreRole()
       if(!await this.empty())fail('TARGET_NOT_EMPTY','ClickHouse target objects appeared before native restore submission.')
-      const selected=tables.map(table=>`TABLE ${quote(source)}.${quote(table)} AS ${quote(this.config.database)}.${quote(table)}`).join(', ')
+      const selected=tables.map(table=>`TABLE ${quoteDatabase(source)}.${quote(table)} AS ${quoteDatabase(this.config.database)}.${quote(table)}`).join(', ')
       await this.runNative(journal,`RESTORE ${selected} FROM Disk(${literal(this.config.backupDisk)},${literal(journal.archive)}) SETTINGS id=${literal(journal.id)},create_database='must-exist',create_table='create',allow_non_empty_tables=false,allow_different_table_def=false,allow_different_database_def=false ASYNC`,signal)
       return {toolVersion:'ClickHouse native RESTORE '+this.bound!.serverVersion}
     }finally{if(!this.native||this.native.id!==journal.id||this.nativeFinished)await rm(archive,{force:true}).catch(()=>{})}

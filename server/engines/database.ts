@@ -5,7 +5,7 @@ import {join} from 'node:path'
 import {createHash} from 'node:crypto'
 import {isDeepStrictEqual} from 'node:util'
 import type {DatabaseConfig,DbSecret} from '../services'
-import {AppError,allowedHost,identifier} from '../security'
+import {AppError,allowedHost,databaseName} from '../security'
 import {runTool,toolEnv} from '../process'
 import {config as installation} from '../config'
 
@@ -79,7 +79,7 @@ export class DatabaseSession {
   readonly failureSignal=this.lost.signal
   constructor(readonly engine:Engine,readonly config:DatabaseConfig,private secret:DbSecret,private signal?:AbortSignal){}
   async connect(){
-    allowedHost(this.config.host);identifier(this.config.database)
+    allowedHost(this.config.host);databaseName(this.config.database)
     checkSignal(this.signal)
     if(this.engine==='postgres'){
       this.postgres=new pg.Client({host:this.config.host,port:this.config.port,database:this.config.database,user:this.config.user,password:this.secret.password,
@@ -280,6 +280,7 @@ export function manifestComparison(expected:Manifest,actual:Manifest){
 }
 
 export async function nativeCredentials(engine:Engine,c:DatabaseConfig,s:DbSecret,dir:string){
+  databaseName(c.database)
   if(/[\r\n\0]/.test([c.host,c.user,c.database,s.password].join('')))fail('INVALID_CREDENTIAL','Control characters are not supported in database credentials.')
   if(engine==='postgres'){
     const path=join(dir,'pgpass'),escape=(v:string)=>v.replaceAll('\\','\\\\').replaceAll(':','\\:')
