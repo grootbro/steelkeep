@@ -54,3 +54,9 @@ export const auditResponse=t.Object({id:t.Union([t.String(),t.Number()]),actor:t
 export const sourceBlockResponse=t.Object({resource_key:t.String(),server_identity:t.String(),run_id:t.String(),state:t.String(),reason_code:t.Nullable(t.String()),created_at:dateResponse,updated_at:dateResponse})
 
 export const artifactAvailabilityResponse=t.Object({id:t.String(),availability:t.Union([t.Literal('present'),t.Literal('missing'),t.Literal('changed'),t.Literal('unknown')]),checkedAt:dateResponse,verification:t.Literal('object-head-only'),checks:t.Object({objectExists:t.Nullable(t.Boolean()),sizeMatches:t.Nullable(t.Boolean()),metadataSha256Matches:t.Nullable(t.Boolean())}),reason:t.String(),message:t.String(),stale:t.Boolean()})
+export const ownerUserResponse=t.Object({id:t.String(),name:t.String(),email:t.String()})
+export const ownerSessionResponse=t.Object({user:t.Nullable(ownerUserResponse),actor:t.String(),scopes:t.Array(t.String()),expiresAt:t.String()})
+export const ownerStatusResponse=t.Object({setupRequired:t.Boolean(),authenticated:t.Boolean(),user:t.Nullable(ownerUserResponse),bootstrapAuthorized:t.Boolean()})
+export const ownerSetupInput=t.Object({name:t.String({minLength:1,maxLength:80}),email:t.String({minLength:3,maxLength:254}),password:t.String({minLength:12,maxLength:128})},{additionalProperties:false})
+export const ownerLoginInput=t.Object({email:t.String({minLength:3,maxLength:254}),password:t.String({maxLength:128})},{additionalProperties:false})
+export const ownerPasswordInput=t.Object({currentPassword:t.String({maxLength:128}),newPassword:t.String({minLength:12,maxLength:128})},{additionalProperties:false})

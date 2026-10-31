@@ -1,16 +1,12 @@
-# Current environment interruption
-
-The earlier clean ARM64 packaged acceptance passed (1 test / 91 assertions / 10.09s), before the latest mobile CSS changes. A subsequent CSS image rebuild unexpectedly reinstalled dependency layers, exhausted host space to about100MiB and returned EIO. Root cancelled only the verified proof build clients. Docker API is currently unavailable; preview database operations and the packaged stack need recovery. No volumes, databases or archives were deleted. Do not start a cold build without at least8–10GiB free host space.
-
-The new scheduled-backup harness created its dedicated minute-cron plan but failed during that interruption (44.06s, 6 assertions). Its finally block could not confirm disablement. After metadata recovers, inspect the unique `Scheduled native acceptance <uuid>` plan (Asia/Bangkok, exact fixture source/storage), disable only that plan through the application API, and review retained occurrences/jobs before any rerun. This is not scheduled native acceptance. Latest mobile CSS fixes remain unpackaged; both TypeScript checks passed.
-
 # Packaged self-host acceptance
+
+Current preview uses Vite and source-mounted API/worker. Docker is recovered; host free space12GiB and BuildKit cache0B were checked after scoped cleanup. Current owner authentication/branding/cache-mount changes have not been repackaged. Keep the older clean-package result as dated evidence only.
 
 This proof packages the application and worker from the repository's existing Dockerfiles, with **no application source bind mounts**. It derives from `compose.selfhost.yaml` using `compose.acceptance-selfhost.yaml`; the preview remains on 4310 and its API on 4311.
 
 Recorded on 31 October 2026: the primary executor built both ARM64 images and the clean packaged acceptance passed **1 test / 91 assertions in 10.09s**. Image ID prefixes: web `4aa204616469`, worker `ed6ac2132f62`; backend source `a1e1cf5`. Compiled UI login/six-section navigation, separate private metadata/secrets, official MCP PG/Maria native recovery into fresh restricted targets, independent actual S3 GET/SHA and SQL all passed. This docs update did not rerun commands.
 
-The web image predates three newer mobile CSS declarations. Those changes require rebuild/rerun and are not included in this packaged evidence.
+The images predate the current owner authentication, branding and cache recipe. Those changes require a future deliberate packaging checkpoint and are excluded from this recorded pass.
 
 ## Separate installation
 
@@ -71,7 +67,7 @@ Before accepting results, independently inspect the merged model/container mount
 
 ## Guarded acceptance
 
-The following opt-in harness passed in the recorded run above; use it for a separate authorized repeat:
+The earlier harness passed in the recorded pre-owner-auth image above. The current harness now requires a newly built owner-auth package and has NOT been rerun against that new package. Use it for a separate authorized repeat:
 
 ```sh
 STEELKEEP_ACCEPTANCE=synthetic-local-selfhost bun test acceptance/selfhost.test.ts
@@ -83,7 +79,7 @@ One serial scenario establishes:
 
 1. Migrated private PostgreSQL 17 metadata exists and the packaged API authenticates the new proof installation token.
 2. The official MCP SDK connects to `http://127.0.0.1:4312/mcp` and discovers backup/recovery tools.
-3. A fresh **headless** Chromium context loads the compiled packaged UI on the same origin, signs in through the real token form, and navigates Dashboard/Connections/Backup plans/Snapshots/Jobs/Configuration. No Vite server or source mount supplies the UI.
+3. A fresh **headless** Chromium context loads the compiled packaged UI on the same origin, creates a synthetic owner through the real setup form only when the separate proof installation is unclaimed, then navigates Dashboard/Connections/Backup plans/Snapshots/Jobs/Configuration. No Vite server or source mount supplies the UI. If the proof already has an owner, it retains that account and exchanges its protected proof installation bearer for an opaque browser session; daily email/password login has separate UI evidence.
 4. For PostgreSQL and MariaDB, the owner harness checks the exact existing fixture version/count/sum marker before creating a new generated empty target with a restricted role. Source data is never reset or modified by the harness.
 5. Real REST requests on 4312 register the fixed source, new target, independent RustFS bucket/storage and manual plan. A read-only metadata lookup correlates the REST-created connection ID with the private proof database, rather than trusting an unrelated API response.
 6. MCP queues a real native backup; request-key retry returns the same job. A separate S3 GET verifies actual size, SHA-256 and native archive header.
@@ -92,7 +88,7 @@ One serial scenario establishes:
 
 All SQL admin/fixture and S3 connections use fixed loopback ports and public disposable fixture credentials. Generated target credentials are sent through PostgreSQL/MySQL drivers and REST bodies, never shell argv or console output. The product itself reaches only the fixed fixture DNS hosts. A successful harness prints a bounded summary of engine/run IDs and origin, without secrets.
 
-The browser uses no trace, video, HAR, screenshot, persistent context or saved storage-state output. Token entry uses a private main-frame binding, keeping the token out of Playwright locator action arguments and failure call logs. Debug/protocol logging is refused. Do not enable recording/debug tools around a run that handles the real proof token.
+The browser uses no trace, video, HAR, screenshot, persistent context or saved storage-state output. Setup credentials and the installation-key exchange use a private main-frame binding, keeping credentials out of Playwright locator action arguments and failure call logs. Debug/protocol logging is refused. Do not enable recording/debug tools around a run that handles the real proof token.
 
 ## Evidence boundaries and preservation
 

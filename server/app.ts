@@ -6,12 +6,16 @@ import {AppError,safeFailure} from './security'
 import {config} from './config'
 import {mcpHandler} from './mcp'
 import {openapiPage} from './openapi-page'
+import {OwnerAuth} from './owner-auth'
+import {ownerSetupInput,ownerLoginInput,ownerPasswordInput,ownerStatusResponse,ownerSessionResponse} from './contracts'
 
 const params=t.Object({id:t.String({format:'uuid'})})
-const errors={400:errorResponse,401:errorResponse,403:errorResponse,404:errorResponse,409:errorResponse,422:errorResponse,500:errorResponse}
+const errors={400:errorResponse,401:errorResponse,403:errorResponse,404:errorResponse,409:errorResponse,422:errorResponse,429:errorResponse,500:errorResponse}
 export const capabilities={engines:engineProfiles.map(p=>p.kind),profiles:engineProfiles.map(profile=>({...profile})),operations:['list','configure','run_backup','check_backup_availability','prepare_restore','start_restore','cancel_job','manage_agents','issue_scoped_token','revoke_token','audit'],restore:{target:'precreated-empty',reviewExpiresSeconds:600},schedules:{missed:'skip',overlap:'skip',timezone:'IANA',upcomingCount:3},support:'Engine-specific schema/version limits apply. Native tools, helper and mounts must be provisioned; consult the documented compatibility matrix.'}
 export function createApp(services:Services){
  validateScopedTokens()
+ const ownerAuth=new OwnerAuth(services.db)
+ const sessionCookie=(value:string)=>({value,httpOnly:true,sameSite:'strict' as const,secure:process.env.STEELKEEP_SECURE_COOKIE==='true',path:'/',maxAge:7*86400})
  const principals=new WeakMap<Request,ReturnType<Services['authenticate']>>()
  const authenticate=(request:Request)=>{let principal=principals.get(request);if(!principal){principal=services.authenticate(request);principals.set(request,principal)}return principal}
  const guard=(scope:Scope)=>async({request}:{request:Request})=>{authorize(await authenticate(request),scope)}
@@ -25,6 +29,7 @@ export function createApp(services:Services){
   if(origin&&!config.allowedOrigins().includes(origin)){set.status=403;return {error:{code:'ORIGIN_NOT_ALLOWED',message:'Origin not allowed.'}}}
   const path=url.pathname.replace(/\/+$/,'')||'/'
   if(path==='/api/v1/health'&&request.method==='GET')return
+  if((path==='/api/v1/auth/status'&&request.method==='GET')||(['/api/v1/auth/setup','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/session/logout'].includes(path)&&request.method==='POST'))return
   const principal=await authenticate(request)
   // Actual route guards own permissions; path aliases cannot downgrade a command scope.
   if(path.startsWith('/openapi'))authorize(principal,'read')
@@ -35,16 +40,21 @@ export function createApp(services:Services){
   if(code==='VALIDATION'){set.status=422;return {error:{code:'INVALID_INPUT',message:'Check the request fields.'}}}
   set.status=error instanceof AppError?error.status:500;return {error:safeFailure(error)}
  })
- .use(openapi({provider:null,documentation:{info:{title:'Steelkeep API',version:'0.1.0',description:'Authenticated asynchronous backup and recovery. Read, configure, backup:run, restore:run, jobs:cancel and agents:manage scopes are enforced.'},components:{securitySchemes:{installationToken:{type:'http',scheme:'bearer'}}},security:[{installationToken:[]}]}}))
+ .use(openapi({provider:null,documentation:{info:{title:'Steelkeep API',version:'0.1.0',description:'Authenticated asynchronous backup and recovery. Read, configure, backup:run, restore:run, jobs:cancel and agents:manage scopes are enforced.'},components:{securitySchemes:{installationToken:{type:'http',scheme:'bearer'},browserSession:{type:'apiKey',in:'cookie',name:'steelkeep_session'}}},security:[{installationToken:[]},{browserSession:[]}]}}))
  .get('/openapi',()=>new Response(openapiPage,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}}),{beforeHandle:guard('read'),detail:{hide:true}})
  .get('/openapi/assets/scalar.js',()=>new Response(Bun.file(new URL('../node_modules/@scalar/api-reference/dist/browser/standalone.js',import.meta.url)),{headers:{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}}),{beforeHandle:guard('read'),detail:{hide:true}})
  .get('/api/v1/health',()=>({status:'ok',version:'0.1.0'}),{response:{200:t.Object({status:t.String(),version:t.String()})},detail:{operationId:'health',security:[]}})
- .post('/api/v1/session',({request,cookie,set})=>{
+ .get('/api/v1/auth/status',({request})=>ownerAuth.status(request),{response:{200:ownerStatusResponse,...errors},detail:{operationId:'getAuthStatus',security:[]}})
+ .post('/api/v1/auth/setup',async({request,body,cookie,set})=>{const result=await ownerAuth.setup(request,body);cookie.steelkeep_session.set(sessionCookie(result.token));set.status=201;return result.response},{body:ownerSetupInput,response:{201:ownerSessionResponse,...errors},detail:{operationId:'setupOwner',description:'Create the first owner after proving installation ownership with the setup bearer key or its verified bootstrap session. Scoped agent credentials cannot claim ownership.'}})
+ .post('/api/v1/auth/login',async({body,cookie})=>{const result=await ownerAuth.login(body);cookie.steelkeep_session.set(sessionCookie(result.token));return result.response},{body:ownerLoginInput,response:{200:ownerSessionResponse,...errors},detail:{operationId:'loginOwner',security:[]}})
+ .post('/api/v1/auth/logout',async({request,cookie,set})=>{await ownerAuth.logout(request);cookie.steelkeep_session.set({...sessionCookie(''),maxAge:0});set.status=204},{detail:{operationId:'logoutOwner',security:[]}})
+ .post('/api/v1/auth/password',async({request,body,cookie,set})=>{await ownerAuth.changePassword(await authenticate(request),body);cookie.steelkeep_session.set({...sessionCookie(''),maxAge:0});set.status=204},{body:ownerPasswordInput,beforeHandle:guard('read'),detail:{operationId:'changeOwnerPassword',security:[{browserSession:[]}],description:'Requires an owner-account browser session and the current password. Revokes owner browser sessions; independent API bearer keys remain unchanged.'}})
+ .post('/api/v1/session',async({request,cookie,set})=>{
   const token=request.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1]
   if(!token)throw new AppError('UNAUTHORIZED','A bearer token is required to create a session.',401)
-  cookie.steelkeep_session.set({value:token,httpOnly:true,sameSite:'strict',secure:process.env.STEELKEEP_SECURE_COOKIE==='true',path:'/',maxAge:3600});set.status=204
- },{beforeHandle:guard('read'),detail:{operationId:'createSession',description:'Exchange a read-scoped bearer token for an HttpOnly local session retaining its exact scopes.'}})
- .post('/api/v1/session/logout',({cookie,set})=>{cookie.steelkeep_session.set({value:'',path:'/',httpOnly:true,sameSite:'strict',secure:process.env.STEELKEEP_SECURE_COOKIE==='true',maxAge:0});set.status=204},{beforeHandle:guard('read'),detail:{operationId:'deleteSession',description:'Expire this browser session; agent token revocation is a separate operation.'}})
+  const result=await ownerAuth.exchange(await authenticate(request));cookie.steelkeep_session.set(sessionCookie(result.token));set.status=204
+ },{beforeHandle:guard('read'),detail:{operationId:'createSession',security:[{installationToken:[]}],description:'Exchange a read-scoped bearer token for an HttpOnly local session retaining its exact scopes.'}})
+ .post('/api/v1/session/logout',async({request,cookie,set})=>{await ownerAuth.logout(request);cookie.steelkeep_session.set({...sessionCookie(''),maxAge:0});set.status=204},{detail:{operationId:'deleteSession',description:'Revoke this browser session and expire its cookie; agent bearer revocation is separate.'}})
  .get('/api/v1/me',async({request})=>{const principal=await authenticate(request);return {actor:principal.actor,scopes:[...principal.scopes]}},{response:{200:t.Object({actor:t.String(),scopes:t.Array(t.String())}),...errors},beforeHandle:guard('read'),detail:{operationId:'getCurrentPrincipal'}})
  .get('/api/v1/capabilities',()=>capabilities,{response:{200:t.Object({engines:t.Array(t.String()),profiles:t.Array(t.Record(t.String(),t.Unknown())),operations:t.Array(t.String()),restore:t.Object({target:t.String(),reviewExpiresSeconds:t.Number()}),schedules:t.Object({missed:t.String(),overlap:t.String(),timezone:t.String(),upcomingCount:t.Number()}),support:t.String()}),...errors},beforeHandle:guard('read'),detail:{operationId:'getCapabilities'}})
  .get('/api/v1/overview',()=>services.overview(),{response:{200:overviewResponse,...errors},beforeHandle:guard('read'),detail:{operationId:'overview'}})

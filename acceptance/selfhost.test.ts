@@ -112,17 +112,38 @@ proof('packaged selfhost: compiled UI login and same-origin REST/MCP native Post
     // Direct library launch: no trace/video/HAR/storageState, test-runner DOM dumps, or visible UI.
     browser=await chromium.launch({headless:true});context=await browser.newContext({baseURL:origin,viewport:{width:1440,height:1000}})
     const page=await context.newPage()
-    await page.exposeBinding('__steelkeepProofToken',({frame})=>{if(frame!==page.mainFrame()||new URL(frame.url()).origin!==origin)throw new Error('Unexpected credential binding origin.');return token})
-    await page.goto('/')
-    await page.getByRole('heading',{name:'Connect to your installation',exact:true}).waitFor({state:'visible'})
-    // The credential stays out of locator action arguments and failure call logs.
-    await page.getByLabel('Installation token',{exact:true}).evaluate(async node=>{
-      if(!(node instanceof HTMLInputElement))throw new Error('Expected a credential input.')
-      const value=await (window as unknown as {__steelkeepProofToken:()=>Promise<string>}).__steelkeepProofToken(),setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set
-      if(!setter)throw new Error('Native input setter unavailable.')
-      setter.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}))
+    // Requires a rebuilt owner-auth package; the earlier pre-auth 1/91 pass is historical.
+    const status=await rest<{setupRequired:boolean}>('/auth/status')
+    if(typeof status.setupRequired!=='boolean')throw new Error('Rebuild the packaged web image with the owner-auth contract before this harness.')
+    const ownerPassword='Packaged synthetic '+randomBytes(24).toString('hex')
+    const privateValues:Record<string,string>={installationKey:token,name:'Packaged synthetic owner',email:'proof-'+randomBytes(8).toString('hex')+'@example.test',password:ownerPassword,confirmPassword:ownerPassword}
+    await page.exposeBinding('__steelkeepProofCredential',({frame},key:unknown)=>{
+      if(frame!==page.mainFrame()||new URL(frame.url()).origin!==origin||typeof key!=='string'||!Object.hasOwn(privateValues,key))throw new Error('Unexpected credential binding origin or field.')
+      return privateValues[key]
     })
-    await page.getByRole('button',{name:'Connect',exact:true}).click()
+    await page.goto('/')
+    if(status.setupRequired){
+      // This owner exists ONLY in the separately inspected proof metadata volume.
+      await page.getByRole('heading',{name:'Create your owner account',exact:true}).waitFor({state:'visible'})
+      for(const field of ['name','email','password','confirmPassword','installationKey']){
+        await page.locator(`input[name="${field}"]`).evaluate(async(node,key)=>{
+          const provide=(window as unknown as {__steelkeepProofCredential:(key:string)=>Promise<string>}).__steelkeepProofCredential
+          const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set
+          if(!setter)throw new Error('Native input setter unavailable.')
+          setter.call(node,await provide(key));node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}))
+        },field)
+      }
+      await page.getByRole('button',{name:'Create account',exact:true}).click()
+    }else{
+      // Repeat package runs retain the owner. Owner daily-password login has its own UI proof.
+      await page.getByRole('heading',{name:'Welcome back',exact:true}).waitFor({state:'visible'})
+      await page.evaluate(async()=>{
+        const provide=(window as unknown as {__steelkeepProofCredential:(key:string)=>Promise<string>}).__steelkeepProofCredential
+        const response=await fetch('/api/v1/session',{method:'POST',headers:{authorization:'Bearer '+await provide('installationKey')}})
+        if(response.status!==204)throw new Error('Packaged installation credential exchange failed.')
+      })
+      await page.reload()
+    }
     await page.getByRole('heading',{name:'Dashboard',level:1,exact:true}).waitFor({state:'visible'})
     for(const label of ['Connections','Backup plans','Snapshots','Jobs','Configuration']){await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:label,exact:true}).click();await page.getByRole('heading',{name:label,level:1,exact:true}).waitFor({state:'visible'})}
 

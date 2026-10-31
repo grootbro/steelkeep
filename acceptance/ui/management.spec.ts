@@ -16,12 +16,14 @@ function optIn(){
 }
 async function guardMetadata(){
   optIn()
+  let ownerCount=0
   const db=new pg.Client({connectionString:metadataUrl,connectionTimeoutMillis:5000,statement_timeout:10000,query_timeout:12000,options:'-c default_transaction_read_only=on'})
   db.on('error',()=>{})
   try{
     await db.connect()
     const {rows:[identity]}=await db.query("SELECT current_database() AS name,current_user AS actor,current_setting('server_version_num')::int AS version,to_regclass('public.agent_tokens')::text AS tokens")
     if(identity?.name!=='steelkeep'||identity.actor!=='steelkeep'||Math.floor(Number(identity.version)/10000)!==17||!identity.tokens)throw new Error()
+    ownerCount=Number((await db.query('SELECT count(*)::int AS count FROM owner_account')).rows[0]?.count)
     const hosts=new Set(['fixture','mysql-fixture','mysql8-fixture','mongodb-fixture','redis-fixture','clickhouse-fixture','mssql-fixture'])
     for(const row of (await db.query('SELECT kind,config FROM connections')).rows){
       const c=row.config as Record<string,unknown>
@@ -29,6 +31,7 @@ async function guardMetadata(){
     }
   }catch{throw new Error('The expected migrated isolated PostgreSQL 17 metadata and fixture-only connections were not established.')}
   finally{await db.end().catch(()=>{})}
+  if(ownerCount!==1)throw new Error('Complete the first owner account setup yourself in the local UI before operational acceptance. This suite never creates an owner or requests your account password; no management mutation was started.')
 }
 async function confirmCreatedRecord(table:'agents'|'connections',id:string,name:string){
   optIn()
@@ -60,10 +63,15 @@ async function login(page:Page,secrets:Map<string,string>){
     return secrets.get(key)!
   })
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'Connect to your installation',exact:true})).toBeVisible()
-  await expect(page.getByLabel('Installation token',{exact:true})).toHaveAttribute('type','password')
-  await secretInput(page.getByLabel('Installation token',{exact:true}),'installation')
-  await command(page,'/api/v1/session','POST',()=>page.getByRole('button',{name:'Connect',exact:true}).click(),204)
+  // Operational suites use the real installation credential exchange. Daily
+  // email/password and first-owner UI are covered by owner-auth-ui.test.ts.
+  await command(page,'/api/v1/session','POST',()=>page.evaluate(async()=>{
+    const provide=(window as unknown as {__managementSecret:(key:string)=>Promise<string>}).__managementSecret
+    const credential=await provide('installation')
+    const result=await fetch('/api/v1/session',{method:'POST',credentials:'same-origin',headers:{Authorization:'Bearer '+credential}})
+    if(result.status!==204)throw new Error('The authorized installation session exchange failed; credential details omitted.')
+  }),204)
+  await page.reload()
   await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
 }
 async function navigate(page:Page,label:string){

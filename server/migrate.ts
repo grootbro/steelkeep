@@ -1,5 +1,6 @@
 import { sql } from 'kysely'
 import { connectDb } from './db'
+import {migrateOwnerAuth} from './owner-auth'
 
 const {db} = connectDb({statementTimeoutMs:120000,queryTimeoutMs:125000})
 try {
@@ -78,6 +79,8 @@ try {
       await sql`ALTER TABLE connections ADD COLUMN revision integer NOT NULL DEFAULT 1 CHECK(revision>=1),ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now()`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(6)`.execute(trx)
     }
+    // No owner or password is bootstrapped by migration.
+    if(!versions.has(7)){await migrateOwnerAuth(trx);await sql`INSERT INTO steelkeep_migrations(version) VALUES(7)`.execute(trx)}
   })
   console.log('Steelkeep metadata schema ready')
 } finally { await db.destroy() }

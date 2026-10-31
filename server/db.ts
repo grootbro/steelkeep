@@ -37,8 +37,11 @@ interface SourceBlock {resource_key:string;server_identity:string;run_id:string;
 interface Agent {id:string;name:string;description:string;revoked_at:DateTime|null;created_at:Generated<Date>}
 interface AgentToken {id:string;agent_id:string;name:string;token_hash:string;scopes:Scope[];expires_at:DateTime;revoked_at:DateTime|null;last_used_at:DateTime|null;issuer_actor:string;parent_token_id:string|null;created_at:Generated<Date>}
 interface AuditEvent {id:Generated<string>;actor:string;action:string;subject_id:string|null;created_at:Generated<Date>}
+interface OwnerAccount {singleton:boolean;id:string;name:string;email:string;password_hash:string;auth_version:number;created_at:Generated<Date>;updated_at:Generated<Date>}
+interface BrowserSession {id:string;token_hash:string;owner_id:string|null;auth_version:number|null;issuer_kind:'owner'|'installation'|'legacy'|'agent';issuer_hash:string|null;agent_token_id:string|null;actor:string;scopes:Scope[];expires_at:DateTime;revoked_at:DateTime|null;created_at:Generated<Date>}
 
 export interface Schema {
+  owner_account:OwnerAccount;browser_sessions:BrowserSession;
   worker_state:{singleton:boolean;epoch:string;started_at:Generated<Date>};
   connections:Connection;plans:Plan;runs:Run;artifacts:Artifact;events:Event;outbox:Outbox;
   restore_intents:RestoreIntent;schedule_occurrences:Occurrence;target_blocks:TargetBlock;source_blocks:SourceBlock;agents:Agent;agent_tokens:AgentToken;audit_events:AuditEvent

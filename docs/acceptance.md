@@ -1,10 +1,15 @@
-# Current environment interruption
-
-The earlier clean ARM64 packaged acceptance passed (1 test / 91 assertions / 10.09s), before the latest mobile CSS changes. A subsequent CSS image rebuild unexpectedly reinstalled dependency layers, exhausted host space to about100MiB and returned EIO. Root cancelled only the verified proof build clients. Docker API is currently unavailable; preview database operations and the packaged stack need recovery. No volumes, databases or archives were deleted. Do not start a cold build without at least8–10GiB free host space.
-
-The new scheduled-backup harness created its dedicated minute-cron plan but failed during that interruption (44.06s, 6 assertions). Its finally block could not confirm disablement. After metadata recovers, inspect the unique `Scheduled native acceptance <uuid>` plan (Asia/Bangkok, exact fixture source/storage), disable only that plan through the application API, and review retained occurrences/jobs before any rerun. This is not scheduled native acceptance. Latest mobile CSS fixes remain unpackaged; both TypeScript checks passed.
-
 # Acceptance ledger
+
+## Local checkpoint · 31 October 2026
+
+Docker and the preview are running again. Host free space reached12GiB after the failed-build remnants, this checkout's six build-history records/cache references and obsolete worker image were removed. BuildKit reports0B cache. Four stopped extra-engine fixture containers/images were also removed after checking ownership and image users; their named data volumes remain intact. The two completed temporary auth test databases were removed after verifying they contained no connections, runs or artifacts. The preview reuses the existing worker image and runs UI edits through Vite; no new Docker image was built for this checkpoint. Database/artifact volumes and other projects were preserved.
+
+Owner email/password authentication now replaces the daily installation-token form. Initial setup creates the owner only after installation ownership is verified; an existing setup session avoids another key entry. Sessions are opaque, hashed in metadata and revocable. First setup has not been performed on the main installation: the user chooses their own account. [Authentication](authentication.md).
+
+Observed checks: unit28/167 assertions and API/MCP integration34/209; isolated auth unit/integration3/65 assertions; browser setup/login/logout/password revocation and six sections1/24 assertions in4.69s, including the final legacy-cookie refusal; read-only desktop/mobile light/dark rendering passed. A separate native scheduled backup passed1/53 assertions in22.45s with S3 SHA-256 and source SQL checks; its plan is paused. The earlier outage-created plan was separately disabled and had no jobs/occurrences. The scheduler lock-wait clock correction is implemented; that specific contention case is not runtime-qualified.
+
+The current auth/brand/cache-recipe changes are source/development evidence. The older clean packaged1/91 pass predates them. The new cache-mount recipe has not been rebuilt; this checkpoint deliberately avoids another packaging build.
+
 
 ## Current environment and latest evidence · 31 October 2026
 

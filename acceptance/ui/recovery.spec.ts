@@ -28,6 +28,8 @@ async function guardMetadata(){
   optIn()
   const [identity]=await metadata("SELECT current_database() AS name,current_user AS actor,current_setting('server_version_num')::int AS version,to_regclass('public.connections')::text AS connections,to_regclass('public.runs')::text AS runs")
   if(identity?.name!=='steelkeep'||identity.actor!=='steelkeep'||Math.floor(Number(identity.version)/10000)!==17||!identity.connections||!identity.runs)throw new Error('The expected migrated PostgreSQL 17 synthetic metadata database was not established.')
+  const [owner]=await metadata('SELECT count(*)::int AS count FROM owner_account')
+  if(Number(owner?.count)!==1)throw new Error('Complete the first owner account setup yourself in the local UI before operational recovery acceptance. This suite never creates an owner or requests your account password; no fixture, storage or recovery mutation was started.')
   const hosts=new Set(['fixture','mysql-fixture','mysql8-fixture','mongodb-fixture','redis-fixture','clickhouse-fixture','mssql-fixture'])
   for(const row of await metadata('SELECT kind,config FROM connections')){
     const c=row.config as Record<string,unknown>
@@ -201,10 +203,15 @@ for(const engine of ['postgres','mariadb'] as const)test(`${engine}: real UI bac
       return secrets.get(key)!
     })
     await page.goto('/')
-    await expect(page.getByRole('heading',{name:'Connect to your installation',exact:true})).toBeVisible()
-    await expect(page.getByLabel('Installation token',{exact:true})).toHaveAttribute('type','password')
-    await secretInput(page.getByLabel('Installation token',{exact:true}),'installation-token')
-    await response(page,'/api/v1/session',()=>page.getByRole('button',{name:'Connect',exact:true}).click())
+    // No owner password is needed for operational recovery acceptance. The
+    // installation exchange issues a real opaque session after owner setup.
+    await response(page,'/api/v1/session',()=>page.evaluate(async()=>{
+      const provide=(window as unknown as {__steelkeepUiFixtureSecret:(key:string)=>Promise<string>}).__steelkeepUiFixtureSecret
+      const credential=await provide('installation-token')
+      const result=await fetch('/api/v1/session',{method:'POST',credentials:'same-origin',headers:{Authorization:'Bearer '+credential}})
+      if(result.status!==204)throw new Error('The authorized installation session exchange failed; credential details omitted.')
+    }))
+    await page.reload()
     await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
     const sourceId=await createDatabaseConnection(page,f,false),targetId=await createDatabaseConnection(page,f,true),storageId=await createStorageConnection(page,f)
     await navigate(page,'Backup plans');await page.locator('.page-header').getByRole('button',{name:'Create plan',exact:true}).click()
