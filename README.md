@@ -92,6 +92,8 @@ and [independent runtime evidence](docs/server-runtime.md).
 From a source checkout:
 
 ```sh
+git clone https://github.com/grootbro/steelkeep.git
+cd steelkeep
 bun install --frozen-lockfile
 bun scripts/setup-local.ts
 ```
@@ -209,8 +211,9 @@ bun run test
 ```
 
 Default tests do not start database fixtures. The CI workflow installs locked dependencies,
-runs both TypeScript checks and default tests, and builds the web application. Its first
-GitHub run is pending; it does not qualify native recovery.
+runs both TypeScript checks and default tests, and builds the web application.
+See the [GitHub CI results](https://github.com/grootbro/steelkeep/actions/workflows/ci.yml);
+these checks do not qualify native recovery.
 
 Some historical acceptance harnesses deliberately require their original absolute checkout
 and fixture identities. They are operator-specific tools, not a portable test suite;

@@ -43,3 +43,20 @@ Before the upload, review the final staged diff, choose the repository namespace
 and visibility, and explicitly decide which unfinished feature changes to include.
 Keep source-release preparation separate from dashboard/runtime acceptance. No
 remote repository, push, public release or deployment was created by this preparation.
+
+## Public source upload — 1 November 2026
+
+The owner explicitly authorized publication to `grootbro/steelkeep`. The repository
+is public with `main` as its default branch, project topics and private vulnerability
+reporting enabled. Prepared source and its audited history were pushed; unfinished
+dashboard status-count changes remain local and were not included.
+
+GitHub CI on `9482cc8` passed both TypeScript checks, 90 default tests with 755
+assertions and the web build. The manual README preview passed four real GitHub
+browser cases: desktop/mobile in light/dark, all six images loaded and the original
+brand/dashboard theme sources matched. Screenshots use the public page, not a local
+Markdown approximation. This does not add native recovery or new image evidence.
+
+The follow-up only changes publication documentation and preview framing; its push
+skips duplicate application CI. README rendering is checked again by the manual
+preview workflow. No Mac application/browser/install/build/test or Docker run occurred.

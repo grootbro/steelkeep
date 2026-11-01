@@ -21,7 +21,7 @@ async function main() {
         await page.waitForFunction(() => {
           const images = [...document.querySelectorAll('article.markdown-body img')]
           return images.length >= 6 && images.every(image => image.complete && image.naturalWidth > 0)
-        }, { timeout: 30000 })
+        }, undefined, { timeout: 30000 })
         await page.evaluate(() => document.fonts.ready)
         const images = await article.locator('img').evaluateAll(images => images.map(image => ({ alt: image.alt, source: image.currentSrc, width: image.naturalWidth })))
         assert.equal(images.length, 6)
@@ -30,7 +30,7 @@ async function main() {
         assert.equal(await article.locator('details').count(), 2)
         assert.equal(await article.getByRole('heading', { name: 'Self-host', exact: true }).count(), 1)
         const name = `${mobile ? 'mobile' : 'desktop'}-${colorScheme}`
-        await article.scrollIntoViewIfNeeded()
+        await article.evaluate(element => element.scrollIntoView({ block: 'start' }))
         await page.screenshot({ path: `${directory}/${name}-viewport.png` })
         await article.screenshot({ path: `${directory}/${name}-readme.png` })
         results.push({ name, url: page.url(), images, details: 2, httpStatus: response.status() })
