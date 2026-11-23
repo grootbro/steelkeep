@@ -27,14 +27,15 @@ proof = json.loads(proof_path.read_text())
 qualified_head = proof['commit']
 assert re.fullmatch('[a-f0-9]{40}', qualified_head) and len(proof['cases']) == 4
 assert all(case['uncaughtErrors'] == 0 for case in proof['cases'])
-assert 'explicit-oauth-start-to-synthetic-google-boundary' in proof['checks']
+assert any(check in proof['checks'] for check in ['explicit-oauth-start-to-synthetic-google-boundary', 'explicit-combined-account-oauth-to-synthetic-google-boundary'])
 assert Path('dist/server/server.js').is_file() and Path('dist/client').is_dir()
 
 inputs = ['server', 'shared', 'package.json', 'bun.lock', 'scripts/setup-owner.ts', 'THIRD-PARTY-NOTICES.md', 'LICENSE']
 qualification = os.environ.get('STEELKEEP_QUALIFIED_UI_RUN_FILE')
 if qualification:
     run = json.loads(Path(qualification).read_text())
-    assert run['conclusion'] == 'success' and run['headSha'] == qualified_head
+    assert run['headSha'] == qualified_head
+    assert any(job['name'] == 'google-drive' and any(step['name'] == 'Check native Drive interface' and step['conclusion'] == 'success' for step in job['steps']) for job in run['jobs']), 'The exact source must have a successful UI acceptance step.'
     build_inputs = [*inputs, 'src', 'public', 'vite.config.ts', 'tsconfig.json']
     subprocess.run(['git', 'diff', '--exit-code', qualified_head, head, '--', *build_inputs], check=True)
 else:

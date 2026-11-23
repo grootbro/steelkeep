@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           QUALIFIED_UI_RUN: ${{ inputs.qualified_ui_run }}
         run: |
-          gh run view "$QUALIFIED_UI_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha > "$RUNNER_TEMP/qualified-ui-run.json"
+          gh run view "$QUALIFIED_UI_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha,jobs > "$RUNNER_TEMP/qualified-ui-run.json"
           gh run download "$QUALIFIED_UI_RUN" --repo "$GITHUB_REPOSITORY" --name google-drive-ui --dir output/playwright/google-drive-ui
       - run: bun run build
       - name: Package unchanged qualified runtime
