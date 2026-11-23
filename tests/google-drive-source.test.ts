@@ -98,6 +98,28 @@ test('Drive recovery validation detects modified recovered bytes and keeps sourc
  expect(drive.bytes.get('synthetic_binary_file_a')).toEqual(original)
 }))
 
+test('Drive recovery retries a complete read-only validation after one metadata drift without replaying writes',async()=>fixture(async({dir,drive,source,target,archive})=>{
+ drive.file('synthetic_binary_file_a',sourceId,'content.bin',Buffer.from('original bytes'))
+ const {manifest}=await source.backup(archive,dir,new AbortController().signal,phase);await target.restore(archive,dir,new AbortController().signal,manifest)
+ const recovered=[...drive.files.values()].find(file=>file.appProperties?.steelkeepSourceId==='synthetic_binary_file_a')!,writes=drive.writes
+ let reads=0;drive.afterRead=()=>{if(++reads===1)recovered.version='2'}
+ expect(target.compare(manifest,await target.manifest()).passed).toBe(true)
+ expect(reads).toBe(2);expect(drive.writes).toBe(writes)
+ expect(drive.bytes.get('synthetic_binary_file_a')).toEqual(Buffer.from('original bytes'))
+}))
+
+test('persistent Drive target drift stops after four read-only validations while source capture still fails immediately',async()=>fixture(async({dir,drive,source,target,archive})=>{
+ drive.file('synthetic_binary_file_a',sourceId,'content.bin',Buffer.from('original bytes'))
+ const {manifest}=await source.backup(archive,dir,new AbortController().signal,phase);await target.restore(archive,dir,new AbortController().signal,manifest)
+ const recovered=[...drive.files.values()].find(file=>file.appProperties?.steelkeepSourceId==='synthetic_binary_file_a')!,writes=drive.writes
+ let reads=0;drive.afterRead=()=>{reads++;recovered.version=String(Number(recovered.version)+1)}
+ await expect(target.manifest()).rejects.toMatchObject({code:'GOOGLE_DRIVE_VALIDATION_UNSTABLE'})
+ expect(reads).toBe(4);expect(drive.writes).toBe(writes)
+ const original=drive.files.get('synthetic_binary_file_a')!;drive.afterRead=()=>{reads++;original.version=String(Number(original.version)+1)}
+ await expect(source.backup(join(dir,'source-drift.skdrive'),dir,new AbortController().signal,phase)).rejects.toMatchObject({code:'GOOGLE_DRIVE_SOURCE_CHANGED'})
+ expect(reads).toBe(5);expect(drive.writes).toBe(writes)
+}))
+
 test('Drive archive manifest must match the reviewed snapshot before any target write',async()=>fixture(async({dir,drive,source,target,archive})=>{
  drive.file('synthetic_binary_file_a',sourceId,'content.bin',Buffer.from('first capture'))
  const {manifest}=await source.backup(archive,dir,new AbortController().signal,phase),otherPath=join(dir,'other.skdrive'),other=await source.backup(otherPath,dir,new AbortController().signal,phase)

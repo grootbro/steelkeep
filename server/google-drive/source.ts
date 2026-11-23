@@ -4,6 +4,7 @@ import {lstat,mkdtemp,open,rm,statfs} from 'node:fs/promises'
 import {join} from 'node:path'
 import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
+import {setTimeout as pause} from 'node:timers/promises'
 import {config} from '../config'
 import {AppError,seal,unseal} from '../security'
 import {maxArchiveBytes} from '../process'
@@ -234,6 +235,14 @@ export class GoogleDriveAdapter implements EngineAdapter {
   }finally{await archive.cleanup()}
  }
  private async restoredManifest():Promise<Manifest>{
+  const delays=[250,750,1500]
+  for(let attempt=0;;attempt++)try{return await this.inspectRestoredManifest()}catch(error){
+   if(!(error instanceof AppError)||error.code!=='GOOGLE_DRIVE_SOURCE_CHANGED')throw error
+   if(attempt===delays.length)throw new AppError('GOOGLE_DRIVE_VALIDATION_UNSTABLE','The recovered Drive tree did not remain stable during bounded read-only validation. Its target reservation is retained; no writes were retried.')
+   await pause(delays[attempt],undefined,{signal:this.signal})
+  }
+ }
+ private async inspectRestoredManifest():Promise<Manifest>{
   const expected=this.restored;if(!expected)throw new AppError('GOOGLE_DRIVE_VALIDATION_CONTEXT','Drive validation requires the current reviewed recovery inventory.')
   const actual=await this.inventory(),bySource=new Map(expected.entries.map(entry=>[entry.id,entry])),mapping=new Map<string,string>([[actual.root.id,expected.rootId]]),observed:DriveArchiveEntry[]=[],seen=new Set<string>()
   for(const entry of actual.entries){const file=await this.client.metadata(entry.id),sourceId=file.appProperties?.steelkeepSourceId,original=sourceId?bySource.get(sourceId):undefined
