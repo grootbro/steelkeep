@@ -33,7 +33,7 @@ function archiveId(value:unknown){const id=text(value,128);if(!/^[a-f0-9-]{36}$/
 function version(value:unknown){const result=text(value,128);if(!/^\d+$/.test(result))throw invalidArchive();return result}
 
 /** Export this derived key, never the installation metadata encryption key. */
-export function deriveDriveRecoveryKey():Buffer{
+export function deriveDriveRecoveryKey():Buffer<ArrayBuffer>{
  const file=process.env.STEELKEEP_DRIVE_RECOVERY_KEY_FILE
  if(file){
   return configuredRecoveryKey(file)

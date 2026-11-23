@@ -78,7 +78,7 @@ export async function publishStoredArchive(db:Kysely<Schema>,row:StoredConnectio
   const head=await storedHead(db,row,archiveId,signal)
   const observed=await client.metadata(archiveId)
   if(observed.sha256Checksum&&observed.sha256Checksum!==input.sha256)throw new AppError('CHECKSUM_MISMATCH','Google Drive reported a different content checksum.')
-  if(head.ContentLength!==input.size||head.Metadata.sha256!==input.sha256)throw new AppError('ARTIFACT_SIZE_MISMATCH','Google Drive archive metadata differs from the captured archive.')
+  if(head.ContentLength!==input.size||head.Metadata?.sha256!==input.sha256)throw new AppError('ARTIFACT_SIZE_MISMATCH','Google Drive archive metadata differs from the captured archive.')
   return archiveId
  }
  if(row.kind!=='s3')throw new AppError('INVALID_STORAGE','Choose S3 or Google Drive storage.')

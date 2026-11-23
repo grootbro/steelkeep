@@ -57,18 +57,18 @@ test('Google code exchange uses one fixed POST endpoint, no redirect and private
   expect(init?.headers).not.toHaveProperty('Authorization')
   return Response.json(tokens(googleDriveScopes.source))
  }
- const result=await requestGoogleTokens(configuration,'source',{grant_type:'authorization_code',code:'synthetic-code',code_verifier:'synthetic-verifier',redirect_uri:configuration.redirectUri},{fetch:fetch as typeof globalThis.fetch})
+ const result=await requestGoogleTokens(configuration,'source',{grant_type:'authorization_code',code:'synthetic-code',code_verifier:'synthetic-verifier',redirect_uri:configuration.redirectUri},{fetch})
  expect(result.refreshToken).toBe('synthetic-google-refresh-token');expect(calls).toBe(1)
 })
 
 test('Google provider errors and redirects never expose returned tokens or error descriptions',async()=>{
  for(const response of [Response.json({error:'invalid_grant',error_description:'do-not-leak-private-token'},{status:400}),Response.json({error:'permission_denied',error_description:'do-not-leak-private-token'},{status:403}),new Response('do-not-leak-private-token',{status:302,headers:{location:'https://evil.example.test/'}}),new Response('x'.repeat(65537))]){
   const fetch=async()=>response
-  try{await requestGoogleTokens(configuration,'source',{grant_type:'refresh_token',refresh_token:'synthetic-previous-token'},{fetch:fetch as typeof globalThis.fetch,previousRefreshToken:'synthetic-previous-token'});throw new Error('expected refusal')}
+  try{await requestGoogleTokens(configuration,'source',{grant_type:'refresh_token',refresh_token:'synthetic-previous-token'},{fetch,previousRefreshToken:'synthetic-previous-token'});throw new Error('expected refusal')}
   catch(error){expect(error).toBeInstanceOf(AppError);expect(String(error)).not.toContain('do-not-leak-private-token')}
  }
  const fetch=async()=>Response.json({error:'invalid_grant'},{status:400})
- await expect(requestGoogleTokens(configuration,'source',{grant_type:'refresh_token',refresh_token:'synthetic-previous-token'},{fetch:fetch as typeof globalThis.fetch,previousRefreshToken:'synthetic-previous-token'})).rejects.toMatchObject({code:'GOOGLE_RECONNECT_REQUIRED'})
+ await expect(requestGoogleTokens(configuration,'source',{grant_type:'refresh_token',refresh_token:'synthetic-previous-token'},{fetch,previousRefreshToken:'synthetic-previous-token'})).rejects.toMatchObject({code:'GOOGLE_RECONNECT_REQUIRED'})
 })
 
 test('invalid callback state and claim tickets fail before database or Google access',async()=>{

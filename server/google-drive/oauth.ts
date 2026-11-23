@@ -9,7 +9,7 @@ import {audit} from '../agents'
 export type GoogleDrivePurpose='source'|'restore'|'storage'|'recovery'
 export const googleDriveScopes={source:'https://www.googleapis.com/auth/drive.readonly',restore:'https://www.googleapis.com/auth/drive.file',storage:'https://www.googleapis.com/auth/drive.file',recovery:'https://www.googleapis.com/auth/drive.readonly'} as const
 export type GoogleOAuthConfiguration={clientId:string;clientSecret:string;redirectUri:string}
-type Fetch=typeof globalThis.fetch
+type Fetch=(...args:Parameters<typeof globalThis.fetch>)=>ReturnType<typeof globalThis.fetch>
 type Credentials={refreshToken:string;accessToken?:string;expiresAt?:number}
 type GrantRow={id:string;actor:string;purpose:GoogleDrivePurpose;scopes:string[];revision:number;status:'pending'|'active'|'revoked'|'reconnect_required';secret:string;created_at:Date;claimed_at:Date|null;revoked_at:Date|null;claim_expires_at:Date|null}
 export type GoogleDriveGrant={id:string;purpose:GoogleDrivePurpose;scopes:string[];revision:number;status:GrantRow['status'];createdAt:string;claimedAt:string|null;revokedAt:string|null}
@@ -86,8 +86,8 @@ export async function migrateGoogleDriveOAuth(db:Kysely<Schema>){
 export class GoogleDriveOAuth {
  constructor(readonly db:Kysely<Schema>,readonly options:{fetch?:Fetch;configuration?:()=>GoogleOAuthConfiguration|null;encryptionKey?:Buffer}={}){}
  private configuration(){const value=(this.options.configuration??googleOAuthConfiguration)();if(!value)throw new AppError('GOOGLE_OAUTH_NOT_CONFIGURED','The server owner must configure Google OAuth before connecting Drive.',503);return value}
- private seal(value:unknown){return seal(value,this.options.encryptionKey)}
- private unseal<T>(value:string){return unseal<T>(value,this.options.encryptionKey)}
+ private seal(value:unknown){return seal(value,this.options.encryptionKey===undefined?undefined:Buffer.from(this.options.encryptionKey))}
+ private unseal<T>(value:string){return unseal<T>(value,this.options.encryptionKey===undefined?undefined:Buffer.from(this.options.encryptionKey))}
  status(){const value=(this.options.configuration??googleOAuthConfiguration)();return {configured:!!value,redirectUri:value?.redirectUri??null,sourceScope:googleDriveScopes.source,restoreScope:googleDriveScopes.restore,storageScope:googleDriveScopes.storage,recoveryScope:googleDriveScopes.recovery}}
  async start(initiator:string,requestedPurpose:GoogleDrivePurpose){
   actor(initiator);purpose(requestedPurpose)
