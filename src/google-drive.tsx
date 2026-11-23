@@ -1,3 +1,4 @@
+import {Link} from '@tanstack/react-router'
 import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react'
 import {ArrowUpRight,CheckCircle2,Download,FolderOpen,LoaderCircle,RefreshCw,ShieldCheck} from 'lucide-react'
 import {api,ApiError,type Connection} from './state'
@@ -103,7 +104,7 @@ function GoogleDriveFlow({connections,scopes,onChanged,onDone,mode}:{connections
   finally{writeLock.current=false;setBusy(null)}
  }
  return <div className={`google-drive-panel google-drive-${mode}`} aria-busy={!!busy}>
-  {error&&<p className="google-drive-error" role="alert">{error}</p>}{notice&&<p className="google-drive-notice" role="status"><CheckCircle2 size={16}/>{notice}{notice.startsWith('Snapshot imported.')&&<a href="/snapshots">Open snapshots<ArrowUpRight size={13}/></a>}</p>}
+  {error&&<p className="google-drive-error" role="alert">{error}</p>}{notice&&<p className="google-drive-notice" role="status"><CheckCircle2 size={16}/>{notice}{notice.startsWith('Snapshot imported.')&&<Link to="/$section" params={{section:'backups'}}>Open snapshots<ArrowUpRight size={13}/></Link>}</p>}
   {!canRead?<p className="form-hint">Viewing Google Drive requires read permission.</p>:loading&&!status?<p className="form-hint" role="status">Loading Google Drive…</p>:status&&!status.configured?<div className="google-drive-setup"><ShieldCheck size={19}/><p>The installation owner needs to configure Google authorization. <a href="https://github.com/grootbro/steelkeep/blob/main/docs/google-drive.md" target="_blank" rel="noreferrer">Setup guide<ArrowUpRight size={12}/></a></p></div>:status&&!owner?<p className="form-hint">Sign in with the owner account to connect Google Drive or import an archive.</p>:status&&<>
    {mode==='connection'?<form className="operation-form google-drive-form" onSubmit={save}>
     <div className="google-drive-authorize"><div><strong>{selected?'Connected Google account':'Connect your Google account'}</strong><p>{selected?'One authorization can be reused for sources, backup storage and recovery.':'Approve read access to Drive and access to files Steelkeep creates, then choose your folders.'}</p></div><button type="button" className={selected?'secondary small':'primary small'} disabled={disabled||locked} onClick={()=>void connect()}>{busy==='authorize'?<LoaderCircle size={14} className="spin"/>:<ArrowUpRight size={14}/>} {selected?'Connect another account':'Connect with Google'}</button></div>

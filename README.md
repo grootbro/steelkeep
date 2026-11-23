@@ -86,7 +86,8 @@ and [independent runtime evidence](docs/server-runtime.md).
 ## Google Drive
 
 Back up a selected Google Drive folder, or use Drive to store database and file
-archives. Connect with Google OAuth from **Connections → Google Drive**.
+archives. Connect once with Google OAuth from **Connections → Add connection → Google Drive**,
+then choose a source folder, backup storage, or both.
 
 Drive publications include a portable recovery descriptor. On another server,
 connect the old archive folder, import a chosen copy with full SHA-256 verification,
@@ -96,6 +97,19 @@ isn't required. Encrypted Drive-file archives use a separately saved recovery ke
 The initial file profile supports My Drive, ordinary files and portable
 Docs/Sheets/Slides exports. Read the [Google Drive setup and recovery guide](docs/google-drive.md)
 for OAuth configuration, exact limits, provider requirements and qualification status.
+
+## Workspace controls
+
+Resize the desktop sidebar by dragging its edge or using the focused separator's
+arrow keys; collapse it to an icon rail when you want more room. Width and collapse
+preferences are saved in your browser. Theme and sign-out stay beside the account.
+
+The saved light/dark preference is applied before the first paint, with dark as the
+default. Dialogs keep their own scroll area and hold the background in place; internal
+navigation keeps the current application document. See the
+[interface quality ledger](docs/interface-quality-pass.md) for exact acceptance evidence
+and the [connectivity reference review](docs/databasement-connectivity-parity.md) for
+the remaining SSH and remote-worker scope.
 
 ## Self-host
 

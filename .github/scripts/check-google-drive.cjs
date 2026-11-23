@@ -317,6 +317,7 @@ async function main() {
       } finally { await context.close() }
     }
     assert.equal(results.length, 4)
+    await require('./check-interface.cjs').checkInterface({ browser, base, storageState, installSyntheticGoogle, directory: directory + '/interface' })
     console.log('Google Drive UI passed four desktop/mobile theme captures and native forms, OAuth claim, catalog and uncertain-import controls; Google provider responses were synthetic.')
   } finally {
     await writeFile(`${directory}/results.json`, JSON.stringify({ commit: process.env.GITHUB_SHA, boundary: 'Real compiled application/auth/PostgreSQL; browser-intercepted Google provider endpoints and Drive connection writes; no real Google account or native-recovery claim.', checks, cases: results }, null, 2))

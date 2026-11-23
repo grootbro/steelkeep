@@ -1,0 +1,13 @@
+/* Shared native controls and dialog scrolling retain the operational composition. */
+.modal{overflow:hidden}
+.modal[open]{display:flex;flex-direction:column}
+.modal-header{position:static;flex:none}
+.modal-header h2{min-width:0;overflow-wrap:anywhere}
+.modal-header>.icon-button{flex:none}
+.modal-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.app select{height:42px;min-height:42px;padding:9px 32px 9px 12px;line-height:1.4;text-overflow:ellipsis}
+.app :is(.collection-toolbar,.connection-browser-filters,.plan-browser-filters,.history-filters) :is(input,select){height:38px;min-height:38px;padding-top:7px;padding-bottom:7px;font-size:12px}
+.app :is(.collection-toolbar,.connection-browser-filters,.plan-browser-filters,.history-filters) select{padding-right:32px}
+.app select[multiple]{height:auto;min-height:84px}
+.modal input,.modal select,.modal textarea{scroll-margin-block:18px}
+.table-wrap{overscroll-behavior-x:contain}
