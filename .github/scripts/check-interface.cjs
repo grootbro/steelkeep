@@ -83,8 +83,15 @@ exports.checkInterface = async function checkInterface({ browser, base, storageS
         await page.keyboard.press('Escape');await dialog.waitFor({ state: 'hidden' })
         assert.equal(await page.evaluate(() => document.body.style.position), '', 'Closing the last modal restores body positioning.')
         assert.equal(await opener.evaluate(element => element === document.activeElement), true, 'Escape returns focus to the opener.')
-        const controls = await page.locator('.connection-browser-filters select').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().width > 0).map(element => { const rect = element.getBoundingClientRect(), style = getComputedStyle(element);return { height: rect.height, arrow: parseFloat(style.paddingRight), line: parseFloat(style.lineHeight), padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom), client: element.clientHeight } }))
-        assert.ok(controls.length >= 3 && controls.every(control => control.height === 38 && control.arrow >= 28 && control.line + control.padding <= control.client + 1), 'Native filter selects align and leave room for their arrow and text.')
+        const controls = await page.locator('.connection-browser-filters select').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().width > 0).map(element => {
+          const rect = element.getBoundingClientRect(), style = getComputedStyle(element), probe = document.createElement('span')
+          // Native selects may report line-height:normal; measure the same font's line box instead of parsing it as a number.
+          Object.assign(probe.style, { position: 'fixed', visibility: 'hidden', whiteSpace: 'nowrap', padding: '0', border: '0', fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight })
+          probe.textContent = 'Ag';document.body.append(probe)
+          const line = probe.getBoundingClientRect().height;probe.remove()
+          return { label: element.parentElement.firstChild.textContent, height: rect.height, arrow: parseFloat(style.paddingRight), line, computedLine: style.lineHeight, padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom), client: element.clientHeight }
+        }))
+        assert.ok(controls.length >= 3 && controls.every(control => control.height === 38 && control.arrow >= 28 && control.line + control.padding <= control.client + 1), 'Native filter selects align and leave room for their arrow and text: ' + JSON.stringify(controls))
         assert.equal(errors.length, 0)
         assert.equal(observed.keyDownloads, 0)
         cases.push({ device, theme, viewport, modalViewportHeight: Math.min(viewport.height, 720), firstPaint, width, controls: controls.length, uncaughtErrors: errors.length })
