@@ -62,7 +62,7 @@ function requestFailure(status:number,write:boolean){
 }
 function sessionUrl(value:string){
  let url:URL;try{url=new URL(value)}catch{throw invalid()}
- if(url.origin!=='https://www.googleapis.com'||url.username||url.password||url.hash||url.pathname!=='/upload/drive/v3/files'||!url.searchParams.get('upload_id')||url.searchParams.has('uploadType')&&url.searchParams.get('uploadType')!=='resumable'||[...url.searchParams.keys()].some(key=>!['uploadType','upload_id','supportsAllDrives','fields'].includes(key))||value.length>8192)throw invalid()
+ if(url.origin!=='https://www.googleapis.com'||url.username||url.password||url.hash||url.pathname!=='/upload/drive/v3/files'||!url.searchParams.get('upload_id')||url.searchParams.has('uploadType')&&url.searchParams.get('uploadType')!=='resumable'||[...url.searchParams.keys()].some(key=>!['uploadType','upload_id','supportsAllDrives','fields','session_crd'].includes(key))||value.length>8192)throw invalid()
  return url
 }
 

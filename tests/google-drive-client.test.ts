@@ -74,7 +74,7 @@ test('Drive uploads use the generated ID, immutable ownership properties and bou
  const drive=client(async(input,init)=>{
   const url=new URL(String(input));calls.push({url,init})
   if(url.pathname.endsWith('/generateIds'))return json({ids:[id]})
-  if(init?.method==='POST')return new Response(null,{headers:{location:'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=synthetic-session'}})
+  if(init?.method==='POST')return new Response(null,{headers:{location:'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=synthetic-session&fields=id%2Cname%2Csize&supportsAllDrives=true&session_crd=synthetic-session-capability'}})
   const range=new Headers(init?.headers).get('content-range');if(range===`bytes 0-${4*1024*1024-1}/${total}`)return new Response(null,{status:308,headers:{range:`bytes=0-${4*1024*1024-1}`}})
   return json(fixture({size:String(total),appProperties,properties,sha256Checksum:sha256}))
  })
@@ -85,6 +85,7 @@ test('Drive uploads use the generated ID, immutable ownership properties and bou
  const put=calls.filter(call=>call.init?.method==='PUT');expect(put).toHaveLength(2);expect((put[0].init?.body as Blob).size).toBe(4*1024*1024);expect((put[1].init?.body as Blob).size).toBe(3)
  expect(new Headers(put[1].init?.headers).get('content-range')).toBe(`bytes ${4*1024*1024}-${total-1}/${total}`)
  expect(put.every(call=>call.url.origin==='https://www.googleapis.com'&&call.init?.redirect==='error')).toBe(true)
+ expect(put.every(call=>call.url.searchParams.get('session_crd')==='synthetic-session-capability'&&call.url.searchParams.get('fields')==='id,name,size')).toBe(true)
 })
 
 test('fresh My Drive folders omit the root alias and require a concrete single-parent response',async()=>{
