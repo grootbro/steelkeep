@@ -197,6 +197,8 @@ async function workflows(page, observed) {
   assert.deepEqual(observed.imports[1], observed.imports[0], 'Unknown import recovery must retain the original request key and exact selection.')
   checks.push('uncertain-import-explicit-same-key-recovery-no-auto-replay')
   const claimTicket = 'gdc_' + 'a'.repeat(64)
+  // A real OAuth callback returns from another document, rather than changing only this page's hash.
+  await page.goto(base + '/overview', { waitUntil: 'domcontentloaded' })
   await page.goto(base + '/connections#google-drive=' + claimTicket)
   await panel.getByText('Google authorization connected.', { exact: false }).waitFor()
   assert.ok(!new URL(page.url()).hash.includes('google-drive'), 'OAuth claim capability must be removed from the browser URL.')
