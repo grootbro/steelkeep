@@ -11,7 +11,7 @@ export function googleDriveCallbackInput(request:Request){
  if(Buffer.byteLength(request.url)>32768)throw new AppError('GOOGLE_OAUTH_RESPONSE','The Google authorization response is too large.')
  const url=new URL(request.url),entries=[...url.searchParams.entries()]
  if(entries.length>32||entries.some(([key,value])=>key.length>128||value.length>8192||/[\0\r\n]/.test(key)))throw new AppError('GOOGLE_OAUTH_RESPONSE','The Google authorization response is invalid.')
- const field=(name:string,max:number)=>{
+ const field=(name:string,max:number):string|undefined=>{
   const values=url.searchParams.getAll(name)
   if(values.length>1||values[0]!==undefined&&(values[0].length>max||/[\0\r\n]/.test(values[0])))throw new AppError('GOOGLE_OAUTH_RESPONSE','The Google authorization response is ambiguous or invalid.')
   return values[0]

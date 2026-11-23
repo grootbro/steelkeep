@@ -116,26 +116,27 @@ acceptance('Google Drive OAuth lifecycle and portable import use real isolated P
   const services=new Services(db),principal:Principal={actor:owner,scopes:allScopes,credentialKind:'installation'}
   const agent=await services.agents.create(principal,{name:'Synthetic Drive configurator '+nonce});ownedAgentIds.add(agent.id);actors.push('agent:'+agent.id)
   const configurator=await services.agents.issue(principal,agent.id,{name:'Synthetic configure proof',scopes:['read','configure'],expiresInHours:1}),reader=await services.agents.issue(principal,agent.id,{name:'Synthetic read proof',scopes:['read'],expiresInHours:1});ownedAgentTokenIds.add(configurator.id);ownedAgentTokenIds.add(reader.id)
-  const app=createApp(services),request=(path:string,token:string,body?:unknown)=>app.handle(new Request('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,...(body===undefined?{}:{'content-type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)}))
-  const safeCatalog=await request('/api/v1/google-drive/accounts',configurator.token);expect(safeCatalog.status).toBe(200)
+  const app=createApp(services),httpRequest=(path:string,token:string,body?:unknown)=>app.handle(new Request('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,...(body===undefined?{}:{'content-type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)}))
+  const safeCatalog=await httpRequest('/api/v1/google-drive/accounts',configurator.token);expect(safeCatalog.status).toBe(200)
   const catalog=await safeCatalog.json() as Array<Record<string,unknown>>
   expect(catalog.some(item=>item.id===combined.id&&item.purpose==='account')).toBe(true)
   expect(catalog.every(item=>!Object.hasOwn(item,'secret')&&!Object.hasOwn(item,'actor'))).toBe(true)
   expect(JSON.stringify(catalog)).not.toContain(firstRefresh)
-  expect((await request('/api/v1/google-drive/accounts',reader.token)).status).toBe(403)
-  expect((await request('/api/v1/google-drive/oauth/start',configurator.token,{purpose:'account'})).status).toBe(403)
-  expect((await request('/api/v1/google-drive/recovery-key',configurator.token)).status).toBe(403)
-  const actualAccessToken=GoogleDriveOAuth.prototype.accessToken
+  expect((await httpRequest('/api/v1/google-drive/accounts',reader.token)).status).toBe(403)
+  expect((await httpRequest('/api/v1/google-drive/oauth/start',configurator.token,{purpose:'account'})).status).toBe(403)
+  expect((await httpRequest('/api/v1/google-drive/recovery-key',configurator.token)).status).toBe(403)
+  const actualAccessToken=GoogleDriveOAuth.prototype.accessToken,actualFetch=globalThis.fetch
   const access=spyOn(GoogleDriveOAuth.prototype,'accessToken').mockImplementation((id,role,signal,force)=>actualAccessToken.call(oauth,id,role,signal,force))
-  const provider=spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+  const provider=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(...[input,init]:Parameters<typeof globalThis.fetch>)=>{
    const url=new URL(input instanceof Request?input.url:String(input));expect(url.origin).toBe('https://www.googleapis.com');expect(init?.method).toBe('GET')
    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer synthetic-first-access-'+nonce)
    if(url.pathname==='/drive/v3/about')return Response.json({user:{permissionId:'synthetic-account-'+nonce}})
    const id=url.pathname.split('/').at(-1)!
    if(!['synthetic_source_'+nonce,'synthetic_storage_'+nonce].includes(id))throw new Error('Unexpected synthetic provider path.')
    return Response.json({id,name:'Synthetic configured folder',mimeType:'application/vnd.google-apps.folder',parents:['synthetic_parent_'+nonce],version:'1',trashed:false,capabilities:{canDownload:true,canAddChildren:true}})
-  })
-  const mcp=new Client({name:'google-drive-configure-proof',version:'1'}),mcpTransport=new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{requestInit:{headers:{authorization:'Bearer '+configurator.token}},fetch:async(input,init)=>app.handle(input instanceof Request?input:new Request(input,init))})
+  },{preconnect:actualFetch.preconnect}))
+  const mcpFetch=Object.assign(async(...[input,init]:Parameters<typeof globalThis.fetch>)=>app.handle(input instanceof Request?input:new Request(input,init)),{preconnect:actualFetch.preconnect})
+  const mcp=new Client({name:'google-drive-configure-proof',version:'1'}),mcpTransport=new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{requestInit:{headers:{authorization:'Bearer '+configurator.token}},fetch:mcpFetch})
   try{
    await mcp.connect(mcpTransport)
    const tools=await mcp.listTools();expect(tools.tools.some(tool=>tool.name==='list_google_drive_accounts')).toBe(true)
