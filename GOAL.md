@@ -4,17 +4,18 @@ Owner scope update · 31 October 2026
 
 Owner delivery update · 24 November 2026
 
-Finish the current production checkpoint first: native Google Drive in both roles,
-reviewed file recovery, and the requested workspace quality pass (resizable/icon-rail
+The current production checkpoint is deployed and merged: native Google Drive in both
+roles, reviewed file recovery, and the requested workspace quality pass (resizable/icon-rail
 sidebar, aligned account/theme/logout, modal background locking and internal scroll,
 client-side deep navigation, one initial loader, prepaint saved/dark theme and aligned
-dropdowns). Publish focused GitHub commits/PRs and update qualification documentation.
-The owner has explicitly authorized these production updates.
+dropdowns). PRs #1 and #2 are merged; the final main CI passed on `4924d4f`.
+Qualification and live-proof boundaries are recorded in `docs/google-drive.md` and
+`docs/interface-quality-pass.md`. The broader platform goal remains in progress.
 
-Then connect and back up the owner's actual application databases on servers A, B,
+Next, connect and back up the owner's actual application databases on servers A, B,
 C and the accessible VPN hosts through the platform/MCP. Files/projects/host images
 are outside this first server batch. A separate agent may inventory hosts and recover
-C's identity from history while the release is completed. Keep system/proof/cache and
+C's identity from history in parallel. Keep system/proof/cache and
 legacy copies distinct from authoritative application databases. Preserve private
 networking and working services, use restricted backup roles, respect the required
 engine versions/consistency methods, and qualify missing transports/profiles before
