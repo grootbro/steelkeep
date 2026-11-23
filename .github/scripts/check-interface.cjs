@@ -30,6 +30,8 @@ exports.checkInterface = async function checkInterface({ browser, base, storageS
         await page.evaluate(() => document.fonts.ready)
         const width = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }))
         assert.ok(width.document <= width.viewport + 1, 'Workspace must fit its viewport.')
+        const connectionNames = await page.locator('.connection-browser-table .connection-name>span:last-child').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width))
+        assert.ok(connectionNames.length > 0 && connectionNames.every(width => width >= 120), 'Connection names need readable line width; use cards when the content panel is narrow: ' + JSON.stringify(connectionNames))
         await page.screenshot({ path: `${directory}/${device}-${theme}.png` })
         const marker = await page.evaluate(() => { window.__steelkeepInterfaceDocument = crypto.randomUUID(); return window.__steelkeepInterfaceDocument })
         const sidebar = page.getByRole('complementary', { name: 'Workspace navigation' })
@@ -119,7 +121,7 @@ exports.checkInterface = async function checkInterface({ browser, base, storageS
         }
       } finally { release?.();await context.close() }
     }
-    checks.push('six-responsive-theme-captures', 'theme-before-hydration', 'fresh-and-blocked-storage-dark-default', 'no-hydration-console-warnings', 'keyboard-pointer-sidebar-resize-and-reload-persistence', 'collapsed-icon-rail-and-mobile-drawer', 'owner-footer-single-row', 'internal-navigation-same-document', 'modal-background-scroll-focus-escape-return', 'native-select-geometry')
+    checks.push('six-responsive-theme-captures', 'theme-before-hydration', 'fresh-and-blocked-storage-dark-default', 'no-hydration-console-warnings', 'keyboard-pointer-sidebar-resize-and-reload-persistence', 'collapsed-icon-rail-and-mobile-drawer', 'owner-footer-single-row', 'internal-navigation-same-document', 'modal-background-scroll-focus-escape-return', 'native-select-geometry', 'readable-connection-names-at-panel-breakpoints')
     console.log('Interface quality passed six viewport/theme cases, prehydration theme, persistent sidebar, native navigation, modal scroll/focus and select geometry.')
   } finally { await writeFile(`${directory}/results.json`, JSON.stringify({ commit: process.env.GITHUB_SHA, boundary: 'Real compiled app/auth/metadata with synthetic Google endpoints; no production or native backup claim.', checks, cases }, null, 2)) }
 }
