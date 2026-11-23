@@ -2,21 +2,21 @@
 
 Scope: preserve Steelkeep's original PNG brand, Inter, Milk/Graphite/Violet and
 Databasement operational composition while fixing everyday interaction defects.
-No runtime or browser runs on the owner's Mac. Source work stays uncommitted until
-the Drive release is merged; production publication belongs to the root release.
+No runtime or browser runs on the owner's Mac. The Drive release was merged before this focused UI checkpoint. Production
+publication belongs to the root release process.
 
-| User criterion | Current evidence / defect | Planned completion | Status |
+| User criterion | Original issue | Implemented behavior | Status |
 | --- | --- | --- | --- |
-| Resize and collapse desktop navigation | Fixed 250/220/200px sidebar, no user control | Bounded pointer/keyboard separator, persistent width, icon rail | Source implemented; remote proof pending |
-| Owner/avatar/theme/logout on one row | `.app .sidebar-bottom{display:block}` moves utilities below owner | Aligned footer with one theme icon | Source implemented; remote proof pending |
-| Civilized dialog scrolling | Native dialog focus/Escape exists; background body is not locked and dialog scrolls as a whole | Shared nested-safe body lock; fixed header and one scrolling body; restore prior state | Source implemented; remote proof pending |
-| Internal navigation without full refresh | Ordinary anchors remain in plan hints and Drive success notices | TanStack Link for app routes; preserve downloads, external links and local fragment anchors | Source implemented; remote proof pending |
-| One first-load experience | AuthLoading then separate Connecting spinner | Reuse shared auth/workspace loader, retain actionable errors | Source implemented by parallel appearance/auth slice; remote proof pending |
-| Dark theme on first paint | Preference applied after mount | Prepaint preference with hydration-safe initial state | Source implemented by parallel appearance/auth slice; remote proof pending |
-| Dropdown clarity | Filters use 34/37/38px heights and narrow horizontal padding | Consistent compact control height and arrow clearance; long labels ellipsize | Source implemented; remote proof pending |
-| Responsive polish | Drive header overflow fixed in `23131af`; modal captured at390/1440 | Preserve mobile drawer, check intermediate widths and long scroll | Remote verification pending |
+| Resize and collapse desktop navigation | Fixed 250/220/200px sidebar, no user control | Bounded pointer/keyboard separator, persistent width, icon rail | Verified in CI45222655345 |
+| Owner/avatar/theme/logout on one row | `.app .sidebar-bottom{display:block}` moves utilities below owner | Aligned footer with one theme icon | Verified in CI45222655345 |
+| Civilized dialog scrolling | Native dialog focus/Escape exists; background body is not locked and dialog scrolls as a whole | Shared nested-safe body lock; fixed header and one scrolling body; restore prior state | Verified in CI45222655345 |
+| Internal navigation without full refresh | Ordinary anchors remain in plan hints and Drive success notices | TanStack Link for app routes; preserve downloads, external links and local fragment anchors | Verified in CI45222655345 |
+| One first-load experience | AuthLoading then separate Connecting spinner | Reuse shared auth/workspace loader, retain actionable errors | Verified in CI45222655345 |
+| Dark theme on first paint | Preference applied after mount | Prepaint preference with hydration-safe initial state | Verified in CI45222655345 |
+| Dropdown clarity | Filters use 34/37/38px heights and narrow horizontal padding | Consistent compact control height and arrow clearance; long labels ellipsize | Verified in CI45222655345 |
+| Responsive polish | Drive header overflow fixed in `23131af`; modal captured at390/1440 | Preserve mobile drawer, check intermediate widths and long scroll | Verified in CI45222655345 |
 
-## Verification to perform remotely
+## Verification method
 
 Use the real compiled application and actual synthetic owner authentication.
 Capture desktop, tablet and mobile in light/dark; inspect exact document width,
@@ -53,4 +53,39 @@ hydration to check the initial theme, verifies fresh/blocked storage behavior,
 resize/rail persistence, mobile drawer, owner alignment, same-document navigation,
 modal scroll/focus/Escape return and native select geometry. Dialog long-content
 checks explicitly use a720px-high viewport after the full-size captures.
-Remote results and screenshot inspection are still pending for this checkpoint.
+## Remote qualification
+
+The final interface/browser run [45222655345](https://github.com/grootbro/steelkeep/actions/runs/45222655345)
+passed on `fd835e00c7dcc5350fb5f455a574253aa8eeefa6`, including its runtime package.
+The existing source/typecheck and PostgreSQL integration jobs had passed in
+[45220463185](https://github.com/grootbro/steelkeep/actions/runs/45220463185); the
+final targeted run repeated the affected compiled UI proof only.
+
+All six cases passed at1440×1000,820×1180 and390×844 in both themes: document width
+matched the viewport; the saved document theme and background matched before
+hydration; each case recorded four consistent native filter controls and zero
+uncaught browser errors. The proof exercised pointer/keyboard resizing, rail
+reload persistence, mobile drawer, footer alignment, same-document navigation,
+modal background lock/internal scroll/focus/Escape return, fresh and blocked
+storage defaults and blocked-storage theme choice across navigation. Existing
+Drive source/storage/restore/recovery, single-claim and same-key import controls
+also passed with synthetic Google responses.
+
+Visual inspection found narrow tablet tables wrapping names one character per
+line. The final correction switches the existing connection card layout by its
+actual panel width below700px. Final tablet PNG was inspected and the proof now
+asserts at least120px of readable name width at every device/theme breakpoint.
+Desktop dark, mobile dark and earlier desktop light captures were also inspected.
+
+Artifacts: `google-drive-ui` ID14842370673 (887,549bytes ZIP), release
+`steelkeep-release-fd835e00c7dcc5350fb5f455a574253aa8eeefa6` ID14842890236
+(3,870,439bytes ZIP). This browser proof does not establish real Google backup or
+restore; those have separate native evidence. The shared modal counter supports
+overlapping dialogs in source, while this browser pass exercised individual
+dialog instances. Local application runtimes remained stopped.
+
+The qualified UI package was deployed to the existing installation on 24 November
+2026 (local time), reusing the pinned image and dependencies. Every runtime file was
+checked against the package manifest. Authenticated HTTPS/API checks passed, the
+public HTML contained the early theme bootstrap, and the web/worker processes became
+ready. Metadata and the prior deployment configuration were preserved for rollback.

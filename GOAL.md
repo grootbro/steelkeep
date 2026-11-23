@@ -2,6 +2,29 @@
 
 Owner scope update · 31 October 2026
 
+Owner delivery update · 24 November 2026
+
+Finish the current production checkpoint first: native Google Drive in both roles,
+reviewed file recovery, and the requested workspace quality pass (resizable/icon-rail
+sidebar, aligned account/theme/logout, modal background locking and internal scroll,
+client-side deep navigation, one initial loader, prepaint saved/dark theme and aligned
+dropdowns). Publish focused GitHub commits/PRs and update qualification documentation.
+The owner has explicitly authorized these production updates.
+
+Then connect and back up the owner's actual application databases on servers A, B,
+C and the accessible VPN hosts through the platform/MCP. Files/projects/host images
+are outside this first server batch. A separate agent may inventory hosts and recover
+C's identity from history while the release is completed. Keep system/proof/cache and
+legacy copies distinct from authoritative application databases. Preserve private
+networking and working services, use restricted backup roles, respect the required
+engine versions/consistency methods, and qualify missing transports/profiles before
+claiming coverage. Check each archive by a complete independent download/hash.
+
+No Mac application runtimes or Docker builds are authorized. Reuse existing images
+and dependencies. The one-off small ready-package deployment below the shared-stand
+8 GiB reserve is authorized; broader capture workspace requirements still need to
+be satisfied. Preserve archives, source data, private credentials and rollback paths.
+
 Build a complete self-hosted open-source backup and recovery platform for everyday use. The earlier goal's restriction against building a platform and its optional AI-agent scope are superseded by the owner's explicit instructions.
 
 Use TypeScript, TanStack Start/Router/DB, Elysia, PostgreSQL metadata, S3-compatible artifacts, durable jobs/workers and timezone scheduling. OpenAPI/Scalar, native MCP and AI-agent management are required: named agents, scoped permissions, expiry, revocation and audit through shared application services.
