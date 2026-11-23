@@ -1,3 +1,8 @@
+import {isStorageKind,isSourceKind} from '../shared/connections'
+import {storageClient,openStoredArchive,storedHead,driveClient,assertDriveStorageOutsideSource,type StorageConfig,type S3Secret} from './storage'
+import {GoogleDriveOAuth} from './google-drive/oauth'
+import {createBackupAdapter} from './source-adapter'
+export {storageClient,type StorageConfig,type S3Secret} from './storage'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import {realpath,stat} from 'node:fs/promises'
@@ -15,7 +20,7 @@ import {resourceKey,sourceAdmissionKey,sourceBlockMatches} from './resources'
 import {sourceBlocked} from './source-locks'
 import {probeArtifactAvailability,availabilityStates,type Availability} from './artifact-availability'
 import {AgentServices,audit} from './agents'
-import {authenticateRequest} from './auth'
+import {authenticateRequest,authorize,type Principal} from './auth'
 import {RetentionServices,retainedPlanDto} from './retention'
 import {NotificationServices} from './notifications'
 import {ConnectionHistoryServices} from './connection-history'
@@ -29,16 +34,10 @@ export type DatabaseConfig={engine?:'postgres'|'mysql'|'mariadb'|'mongodb'|'clic
 export type RedisConfig={engine:'redis';host:string;port:number;database:string;dbIndex:number;user:string;tls:boolean;restoreTarget:boolean;allowGlobalReadLock:boolean}
 export type SQLiteConfig={engine:'sqlite';path:string;database:string;restoreTarget:boolean}
 export type SourceConfig=DatabaseConfig|RedisConfig|SQLiteConfig
-export type StorageConfig={endpoint:string;region:string;bucket:string;prefix:string}
 export type DbSecret={password:string}
-export type S3Secret={accessKey:string;secretKey:string}
 export function databaseClient(c:DatabaseConfig,s:DbSecret){
   allowedHost(c.host)
   return new pg.Client({host:c.host,port:c.port,database:c.database,user:c.user,password:s.password,ssl:c.tls?{rejectUnauthorized:true}:false,connectionTimeoutMillis:5000,statement_timeout:10000,query_timeout:12500})
-}
-export function storageClient(c:StorageConfig,s:S3Secret,maxAttempts:1|2=2){
-  allowedHost(new URL(c.endpoint).hostname)
-  return new S3Client({endpoint:c.endpoint,region:c.region,forcePathStyle:true,credentials:{accessKeyId:s.accessKey,secretAccessKey:s.secretKey},maxAttempts})
 }
 export function nextOccurrence(cron:string,timezone:string,after=new Date()):Date{
   try{
@@ -102,17 +101,7 @@ export class Services {
  readonly artifactDownloads:ArtifactDownloadServices
  readonly artifactDeletions:ArtifactDeletionServices
  constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDeletions=new ArtifactDeletionServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
- protected openArtifactDownload:DownloadOpen=async(artifact,signal)=>{
-  const storage=await this.connection(artifact.storage_id)
-  if(storage.kind!=='s3')throw new AppError('INVALID_STORAGE','Snapshot storage is not S3 compatible.')
-  const settings=storage.config as StorageConfig,client=storageClient(settings,unseal<S3Secret>(storage.secret))
-  try{
-   const value=await client.send(new GetObjectCommand({Bucket:settings.bucket,Key:artifact.object_key}),{abortSignal:signal})
-   if(!value.Body||value.ContentRange){if(value.Body instanceof Readable)value.Body.destroy();client.destroy();throw new AppError('INVALID_DOWNLOAD','Storage did not return a complete archive.')}
-   const body=value.Body instanceof Readable?value.Body:Readable.fromWeb(value.Body.transformToWebStream() as unknown as NodeReadableStream<Uint8Array>)
-   return {length:value.ContentLength,body,close:()=>{body.destroy();client.destroy()}}
-  }catch(error){client.destroy();throw error}
- }
+ protected openArtifactDownload:DownloadOpen=async(artifact,signal)=>openStoredArchive(this.db,await this.connection(artifact.storage_id),artifact.object_key,signal)
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
   .select(['source_blocks.resource_key','source_blocks.server_identity','source_blocks.run_id','source_blocks.state','source_blocks.reason_code','source_blocks.created_at','source_blocks.updated_at','runs.source_id','connections.name as source_name','connections.kind as source_kind','runs.status as run_status','runs.phase as run_phase','runs.error_code as run_error_code','runs.finished_at as run_finished_at'])
@@ -131,16 +120,31 @@ export class Services {
  }
  async connections(){
   const [rows,blocks,sourceBlocks]=await Promise.all([this.db.selectFrom('connections').select(['id','name','kind','config','check_status','checked_at','created_at','updated_at','revision']).orderBy('created_at','desc').execute(),this.db.selectFrom('target_blocks').select(['target_id','resource_key']).execute(),this.db.selectFrom('source_blocks').select('resource_key').execute()])
-  return rows.map(row=>({...row,blocked:row.kind!=='s3'&&(blocks.some(b=>b.resource_key===resourceKey(row))||sourceBlocks.some(b=>sourceBlockMatches(row,b.resource_key)))}))
+  return rows.map(row=>({...row,blocked:!isStorageKind(row.kind)&&(blocks.some(b=>b.resource_key===resourceKey(row))||sourceBlocks.some(b=>sourceBlockMatches(row,b.resource_key)))}))
  }
  async connection(id:string){
   const row=await this.db.selectFrom('connections').selectAll().where('id','=',validId(id)).executeTakeFirst()
   if(!row)throw new AppError('NOT_FOUND','Connection not found.',404);return row
  }
+ googleDriveAccounts(principal:Principal){authorize(principal,'configure');return new GoogleDriveOAuth(this.db).connectedAccounts()}
  async createConnection(input:ConnectionInput,actor='installation-owner'){
-  const id=randomUUID();let safe:SourceConfig|StorageConfig,secret:DbSecret|S3Secret|Record<string,never>
+  const id=randomUUID();let safe:SourceConfig|StorageConfig|Record<string,unknown>,secret:DbSecret|S3Secret|Record<string,never>
   if(!input.name.trim())throw new AppError('INVALID_CONNECTION','Enter a connection name.')
-  if(input.kind==='sqlite'){
+  if(input.kind==='google_drive'||input.kind==='google_drive_storage'){
+   const restoreTarget=input.kind==='google_drive'&&input.restoreTarget===true,purpose=input.kind==='google_drive_storage'?(input.readOnlyRecovery?'recovery':'storage'):restoreTarget?'restore':'source'
+   const oauth=new GoogleDriveOAuth(this.db),grant=await oauth.grant(input.grantId,purpose)
+   const initial={grantId:grant.id,grantRevision:grant.revision,grantPurpose:purpose,readOnly:purpose==='recovery',restoreTarget},client=driveClient(this.db,{id,kind:input.kind,config:initial,secret:''},AbortSignal.timeout(30000))
+   let folderId=input.folderId
+   if(folderId==='new'){
+    if(purpose==='source')throw new AppError('INVALID_SOURCE','Choose the existing folder to back up.')
+    folderId=(await client.generateIds(1))[0]!
+    await client.createFolder({id:folderId,parentId:'root',name:input.name.trim(),appProperties:{steelkeepRole:purpose}})
+   }
+   const [folder,account]=await Promise.all([client.metadata(folderId),client.account()])
+   if(folder.trashed||folder.mimeType!=='application/vnd.google-apps.folder')throw new AppError('INVALID_DRIVE_FOLDER','Choose an accessible Google Drive folder.')
+   if(folder.driveId)throw new AppError('DRIVE_PROFILE_UNSUPPORTED','Shared Drives require a separately qualified profile; choose a My Drive folder.')
+   safe={...initial,database:folder.id,folderId:folder.id,folderName:folder.name,accountId:account.permissionId};secret={}
+  }else if(input.kind==='sqlite'){
    const {sqliteIdentity}=await import('./engines/sqlite'),identity=await sqliteIdentity(input.path,input.restoreTarget??false)
    safe={engine:'sqlite',path:identity.path,database:identity.path,restoreTarget:input.restoreTarget??false};secret={}
   }else if(input.kind==='redis'){
@@ -190,7 +194,7 @@ export class Services {
    if(row.revision!==input.revision)throw new AppError('REVISION_CONFLICT','This connection changed. Reload it before saving.',409)
    const allowed=new Set(['revision','name'])
    if(row.kind==='s3'){allowed.add('accessKey');allowed.add('secretKey')}
-   else if(row.kind!=='sqlite'){allowed.add('user');allowed.add('password');allowed.add('tls')}
+   else if(!['sqlite','google_drive','google_drive_storage'].includes(row.kind)){allowed.add('user');allowed.add('password');allowed.add('tls')}
    if(!row.config.restoreTarget&&['mysql','mariadb','mongodb','redis'].includes(row.kind))allowed.add('allowGlobalReadLock')
    if(!row.config.restoreTarget&&row.kind==='clickhouse')allowed.add('quiescentSource')
    if(Object.keys(input).some(key=>!allowed.has(key)))throw new AppError('INAPPLICABLE_FIELD','An edit field does not apply to this connection profile.')
@@ -207,12 +211,12 @@ export class Services {
    if(configChanged||secretChanged){
     const active=await trx.selectFrom('runs').select('id').where('status','in',['queued','running','cancelling']).where(eb=>eb.or([eb('source_id','=',id),eb('storage_id','=',id),eb('target_id','=',id)])).executeTakeFirst()
     const journal=await trx.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').select('source_blocks.run_id').where('runs.source_id','=',id).executeTakeFirst()
-    if(active||journal||row.kind!=='s3'&&await sourceBlocked(trx,row))throw new AppError('CONNECTION_BUSY','Credentials and operation settings cannot change while a job or uncertain source lock uses this connection.',409)
+    if(active||journal||!isStorageKind(row.kind)&&await sourceBlocked(trx,row))throw new AppError('CONNECTION_BUSY','Credentials and operation settings cannot change while a job or uncertain source lock uses this connection.',409)
    }
    const changed=await trx.updateTable('connections').set({name:input.name.trim(),revision:row.revision+1,updated_at:sql`now()`,...(configChanged?{config:nextConfig}:{}),...(secretChanged?{secret:nextSecret}:{}),...(configChanged||secretChanged?{check_status:'untested',checked_at:null}:{})}).where('id','=',id).where('revision','=',input.revision).returningAll().executeTakeFirst()
    if(!changed)throw new AppError('REVISION_CONFLICT','This connection changed. Reload it before saving.',409)
    await audit(trx,actor,secretChanged?'connection.credentials.rotated':configChanged?'connection.options.updated':'connection.renamed',id)
-   const blocked=row.kind!=='s3'&&(Boolean(await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',resourceKey(row)).executeTakeFirst())||await sourceBlocked(trx,row))
+   const blocked=!isStorageKind(row.kind)&&(Boolean(await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',resourceKey(row)).executeTakeFirst())||await sourceBlocked(trx,row))
    return connectionDto(changed,blocked)
   })
  }
@@ -234,11 +238,15 @@ export class Services {
   })
  }
  protected async probeConnection(row:ConnectionRow){
-  if(row.kind==='s3'){
+  if(row.config.importedArchive)throw new AppError('IMPORTED_SOURCE_OFFLINE','This is an imported archive identity, not a live connection. Add a new connection to capture another backup.')
+  if(row.kind==='google_drive_storage'){
+   const client=driveClient(this.db,row,AbortSignal.timeout(10000)),folder=await client.metadata(String(row.config.folderId));if(folder.trashed||folder.mimeType!=='application/vnd.google-apps.folder')throw new AppError('INVALID_DRIVE_FOLDER','Storage folder is unavailable.')
+  }else if(row.kind==='s3'){
    const client=storageClient(row.config as StorageConfig,unseal<S3Secret>(row.secret));try{await client.send(new HeadBucketCommand({Bucket:(row.config as StorageConfig).bucket}),{abortSignal:AbortSignal.timeout(10000)})}finally{client.destroy()}
   }else{
    const {createEngineAdapter}=await import('./engines/index')
-   const client=createEngineAdapter(row.kind,{config:row.config,secret:unseal<Record<string,unknown>>(row.secret),signal:AbortSignal.timeout(30000)})
+   if(!isSourceKind(row.kind))throw new AppError('INVALID_SOURCE','Unsupported source.')
+   const client=createBackupAdapter(row.kind,{config:row.config,secret:unseal<Record<string,unknown>>(row.secret),signal:AbortSignal.timeout(30000)},this.db)
    try{await client.connect()}finally{await client.close()}
   }
  }
@@ -263,7 +271,8 @@ export class Services {
   const id=randomUUID(),cron=input.cron?.trim()||null,next=cron?nextOccurrence(cron,input.timezone):null
   return this.db.transaction().execute(async trx=>{
    const connections=await lockConnections(trx,[input.sourceId,input.storageId]),source=connections.get(input.sourceId.toLowerCase())!,storage=connections.get(input.storageId.toLowerCase())!
-   if(source.kind==='s3'||storage.kind!=='s3'||source.config.restoreTarget)throw new AppError('INVALID_PLAN','Choose a source database and S3 storage.')
+   if(!isSourceKind(source.kind)||!isStorageKind(storage.kind)||source.config.restoreTarget||source.config.importedArchive||storage.config.readOnly)throw new AppError('INVALID_PLAN','Choose an active backup source and S3 or Google Drive storage.')
+   await assertDriveStorageOutsideSource(this.db,source,storage,AbortSignal.timeout(30000))
    await trx.insertInto('plans').values({id,name:input.name.trim(),source_id:source.id,storage_id:storage.id,cron,timezone:input.timezone,enabled:true,next_due:next}).execute();await audit(trx,actor,'plan.created',id)
    return {id,nextDue:next}
   })
@@ -344,13 +353,7 @@ export class Services {
  async jobs(){return (await this.db.selectFrom('runs').selectAll().orderBy('created_at','desc').limit(100).execute()).map(safeRun)}
  async job(id:string){const run=await this.db.selectFrom('runs').selectAll().where('id','=',validId(id)).executeTakeFirst();if(!run)throw new AppError('NOT_FOUND','Job not found.',404);return {...safeRun(run),events:await this.db.selectFrom('events').selectAll().where('run_id','=',id).orderBy('id','asc').limit(500).execute()}}
  protected async probeArtifactObject(artifact:Selectable<Schema['artifacts']>,storage:ConnectionRow){
-  let client:S3Client|undefined
-  return probeArtifactAvailability({head:signal=>{
-   if(storage.kind!=='s3')throw new AppError('INVALID_STORAGE','Artifact storage is not an S3 connection.')
-   const settings=storage.config as StorageConfig
-   client=storageClient(settings,unseal<S3Secret>(storage.secret))
-   return client.send(new HeadObjectCommand({Bucket:settings.bucket,Key:artifact.object_key}),{abortSignal:signal})
-  },destroy:()=>client?.destroy()},{size:artifact.size,sha256:artifact.sha256})
+  return probeArtifactAvailability({head:signal=>storedHead(this.db,storage,artifact.object_key,signal),destroy:()=>{}},{size:artifact.size,sha256:artifact.sha256})
  }
  async checkArtifactAvailability(id:string,actor='installation-owner'){
   validId(id)
@@ -391,8 +394,8 @@ export class Services {
  }
  async overview(){
   const [jobs,backups,plans,connections,activityRows,summary,storage]=await Promise.all([this.jobs(),this.artifacts(),this.plans(),this.connections(),
-   sql<{date:string;backup:number;restore:number;failed:number}>`SELECT to_char(d.day,'YYYY-MM-DD') AS date, count(r.id) FILTER(WHERE r.type='backup')::integer AS backup,count(r.id) FILTER(WHERE r.type='restore')::integer AS restore,count(r.id) FILTER(WHERE r.status='failed')::integer AS failed FROM generate_series((now() AT TIME ZONE 'UTC')::date-13,(now() AT TIME ZONE 'UTC')::date,interval '1 day') d(day) LEFT JOIN runs r ON (r.created_at AT TIME ZONE 'UTC')::date=d.day::date GROUP BY d.day ORDER BY d.day`.execute(this.db),
-   sql<{total:number;succeeded:number;failed:number;cancelled:number;interrupted:number;active:number}>`SELECT count(*)::integer AS total,count(*) FILTER(WHERE status='succeeded')::integer AS succeeded,count(*) FILTER(WHERE status='failed')::integer AS failed,count(*) FILTER(WHERE status='cancelled')::integer AS cancelled,count(*) FILTER(WHERE status='interrupted')::integer AS interrupted,count(*) FILTER(WHERE status IN ('queued','running','cancelling'))::integer AS active FROM runs WHERE created_at>=now()-interval '30 days'`.execute(this.db),
+   sql<{date:string;backup:number;restore:number;failed:number;statusCounts:Record<'queued'|'running'|'cancelling'|'succeeded'|'failed'|'cancelled'|'interrupted',number>}>`SELECT to_char(d.day,'YYYY-MM-DD') AS date, count(r.id) FILTER(WHERE r.type='backup')::integer AS backup,count(r.id) FILTER(WHERE r.type='restore')::integer AS restore,count(r.id) FILTER(WHERE r.status='failed')::integer AS failed,json_build_object('queued',count(r.id) FILTER(WHERE r.status='queued'),'running',count(r.id) FILTER(WHERE r.status='running'),'cancelling',count(r.id) FILTER(WHERE r.status='cancelling'),'succeeded',count(r.id) FILTER(WHERE r.status='succeeded'),'failed',count(r.id) FILTER(WHERE r.status='failed'),'cancelled',count(r.id) FILTER(WHERE r.status='cancelled'),'interrupted',count(r.id) FILTER(WHERE r.status='interrupted')) AS "statusCounts" FROM generate_series((now() AT TIME ZONE 'UTC')::date-13,(now() AT TIME ZONE 'UTC')::date,interval '1 day') d(day) LEFT JOIN runs r ON (r.created_at AT TIME ZONE 'UTC')::date=d.day::date GROUP BY d.day ORDER BY d.day`.execute(this.db),
+   sql<{total:number;succeeded:number;failed:number;cancelled:number;interrupted:number;active:number;statusCounts:Record<'queued'|'running'|'cancelling'|'succeeded'|'failed'|'cancelled'|'interrupted',number>}>`SELECT count(*)::integer AS total,count(*) FILTER(WHERE status='succeeded')::integer AS succeeded,count(*) FILTER(WHERE status='failed')::integer AS failed,count(*) FILTER(WHERE status='cancelled')::integer AS cancelled,count(*) FILTER(WHERE status='interrupted')::integer AS interrupted,count(*) FILTER(WHERE status IN ('queued','running','cancelling'))::integer AS active,json_build_object('queued',count(*) FILTER(WHERE status='queued'),'running',count(*) FILTER(WHERE status='running'),'cancelling',count(*) FILTER(WHERE status='cancelling'),'succeeded',count(*) FILTER(WHERE status='succeeded'),'failed',count(*) FILTER(WHERE status='failed'),'cancelled',count(*) FILTER(WHERE status='cancelled'),'interrupted',count(*) FILTER(WHERE status='interrupted')) AS "statusCounts" FROM runs WHERE created_at>=now()-interval '30 days'`.execute(this.db),
    sql<{bytes:string;count:number}>`SELECT coalesce(sum(size),0)::text AS bytes,count(*)::integer AS count FROM artifacts WHERE deletion_state<>'deleted'`.execute(this.db)])
   const activity=activityRows.rows
   return {jobs,backups,plans,connections,serverTime:new Date().toISOString(),activity,activityWindow:{from:activity[0]?.date??'',to:activity.at(-1)?.date??'',timezone:'UTC' as const},jobSummary:{...summary.rows[0],windowDays:30,scope:'all installation jobs'},storageSummary:{...storage.rows[0],scope:'retained artifact records; pending deletion is unconfirmed'}}

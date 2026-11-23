@@ -1,3 +1,4 @@
+import {isStorageKind} from '../shared/connections'
 import {useState} from 'react'
 import {Activity,Archive,ArrowRight,CheckCircle2,ChevronRight,Clock,Database,HardDrive,PieChart,Plus} from 'lucide-react'
 import {Link} from '@tanstack/react-router'
@@ -14,8 +15,8 @@ export function Dashboard({data,jobs,name,onSelect,onConnection,onPlan}:{data:Ov
   const summary=data.jobSummary,terminal=jobs.filter(job=>['succeeded','failed'].includes(job.status))
   const outcomes=summary?summary.succeeded+summary.failed:terminal.length
   const successRate=outcomes?Math.round((summary?summary.succeeded:terminal.filter(job=>job.status==='succeeded').length)/outcomes*100):null
-  const storage=recentStorage(data),sources=data.connections.filter(connection=>connection.kind!=='s3'&&!connection.config.restoreTarget)
-  const volumes=data.connections.filter(connection=>connection.kind==='s3')
+  const storage=recentStorage(data),sources=data.connections.filter(connection=>!isStorageKind(connection.kind)&&!connection.config.restoreTarget&&!connection.config.importedArchive)
+  const volumes=data.connections.filter(connection=>isStorageKind(connection.kind))
   const hasSource=sources.some(connection=>connection.check_status==='available'&&!connection.blocked),hasStorage=volumes.some(connection=>connection.check_status==='available')
   const sourcesBlocked=sources.length>0&&sources.every(source=>source.blocked)
   const plansBlocked=data.plans.length>0&&data.plans.every(plan=>sources.find(source=>source.id===plan.source_id)?.blocked)

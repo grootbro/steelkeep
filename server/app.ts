@@ -1,3 +1,4 @@
+import {googleDriveRoutes} from './google-drive/routes'
 import { Elysia, t } from 'elysia'
 import { openapi } from '@elysia/openapi'
 import {connectionInput,connectionUpdateInput,planInput,planUpdateInput,commandInput,prepareRestoreInput,startRestoreInput,errorResponse,idResponse,connectionResponse,planResponse,jobResponse,artifactResponse,restorePreparedResponse,overviewResponse,agentInput,tokenInput,agentResponse,tokenResponse,issuedTokenResponse,auditResponse,sourceBlockResponse,targetBlockResponse,artifactAvailabilityResponse} from './contracts'
@@ -21,7 +22,7 @@ import {ownerSetupInput,ownerLoginInput,ownerPasswordInput,ownerStatusResponse,o
 
 const params=t.Object({id:t.String({format:'uuid'})})
 const errors={400:errorResponse,401:errorResponse,403:errorResponse,404:errorResponse,409:errorResponse,422:errorResponse,429:errorResponse,405:errorResponse,416:errorResponse,500:errorResponse,503:errorResponse,504:errorResponse}
-export const capabilities={engines:engineProfiles.map(p=>p.kind),profiles:engineProfiles.map(profile=>({...profile})),operations:['list','configure','run_backup','check_backup_availability','prepare_restore','start_restore','cancel_job','manage_agents','issue_scoped_token','revoke_token','audit','retention_preview','retention_policy','retention_cleanup','retention_lock','browse_history','browse_connections','connection_summary','browse_plans','snapshot_download','manual_snapshot_deletion','snapshot_comments','notification_channels','notification_deliveries','notification_test','notification_retry'],restore:{target:'precreated-empty',reviewExpiresSeconds:600},schedules:{missed:'skip',overlap:'skip',timezone:'IANA',upcomingCount:3},support:'Engine-specific schema/version limits apply. Native tools, helper and mounts must be provisioned; consult the documented compatibility matrix.'}
+export const capabilities={engines:engineProfiles.map(p=>p.kind),profiles:engineProfiles.map(profile=>({...profile})),operations:['list','configure','list_google_drive_accounts','browse_drive_archives','import_drive_archive','run_backup','check_backup_availability','prepare_restore','start_restore','cancel_job','manage_agents','issue_scoped_token','revoke_token','audit','retention_preview','retention_policy','retention_cleanup','retention_lock','browse_history','browse_connections','connection_summary','browse_plans','snapshot_download','manual_snapshot_deletion','snapshot_comments','notification_channels','notification_deliveries','notification_test','notification_retry','google_drive','google_drive_recovery'],restore:{target:'precreated-empty',reviewExpiresSeconds:600},schedules:{missed:'skip',overlap:'skip',timezone:'IANA',upcomingCount:3},support:'Engine-specific schema/version limits apply. Native tools, helper and mounts must be provisioned; consult the documented compatibility matrix.'}
 export function createApp(services:Services){
  validateScopedTokens()
  const ownerAuth=new OwnerAuth(services.db),history=new HistoryServices(services.db),planHistory=new PlanHistoryServices(services.db)
@@ -38,7 +39,7 @@ export function createApp(services:Services){
   const origin=request.headers.get('origin')
   if(origin&&!config.allowedOrigins().includes(origin)){set.status=403;return {error:{code:'ORIGIN_NOT_ALLOWED',message:'Origin not allowed.'}}}
   const path=url.pathname.replace(/\/+$/,'')||'/'
-  if(path==='/api/v1/health'&&request.method==='GET')return
+  if((path==='/api/v1/health'||path==='/api/v1/google-drive/oauth/callback')&&request.method==='GET')return
   if((path==='/api/v1/auth/status'&&request.method==='GET')||(['/api/v1/auth/setup','/api/v1/auth/setup-link/claim','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/session/logout'].includes(path)&&request.method==='POST'))return
   const principal=await authenticate(request)
   // Actual route guards own permissions; path aliases cannot downgrade a command scope.
@@ -53,6 +54,7 @@ export function createApp(services:Services){
   }
   set.status=error instanceof AppError?error.status:500;return {error:safeFailure(error)}
  })
+ .use(googleDriveRoutes(services,authenticate))
  .use(openapi({provider:null,documentation:{info:{title:'Steelkeep API',version:'0.1.0',description:'Authenticated asynchronous backup and recovery. Read, configure, backup:run, restore:run, jobs:cancel, agents:manage, backup:delete and backup:download scopes are enforced.'},components:{securitySchemes:{installationToken:{type:'http',scheme:'bearer'},browserSession:{type:'apiKey',in:'cookie',name:'steelkeep_session'}}},security:[{installationToken:[]},{browserSession:[]}]}}))
  .get('/openapi',()=>new Response(openapiPage,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}}),{beforeHandle:guard('read'),detail:{hide:true}})
  .get('/openapi/assets/scalar.js',()=>new Response(Bun.file(new URL('../node_modules/@scalar/api-reference/dist/browser/standalone.js',import.meta.url)),{headers:{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}}),{beforeHandle:guard('read'),detail:{hide:true}})

@@ -1,3 +1,4 @@
+import {isStorageKind} from '../shared/connections'
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto'
 import {z} from 'zod'
 import {sql,type Kysely} from 'kysely'
@@ -8,7 +9,7 @@ import {resourceKey,sourceBlockMatches,type Resource} from './resources'
 
 export const connectionOrders=['newest','oldest','name_asc','name_desc'] as const
 export const connectionRoles=['source','storage','target'] as const
-export const connectionKinds=['postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql','s3'] as const
+export const connectionKinds=['postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql','s3','google_drive','google_drive_storage'] as const
 export const connectionHistoryInput=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(30),cursor:z.string().min(1).max(4096).optional(),order:z.enum(connectionOrders).default('newest'),role:z.enum(connectionRoles).optional(),kind:z.enum(connectionKinds).optional(),status:z.enum(['untested','available','failed']).optional(),search:z.string().trim().max(100).optional()})
 type Input=z.infer<typeof connectionHistoryInput>
 type Anchor={id:string;createdAt:string;name:string}
@@ -26,8 +27,8 @@ export function connectionAnchor(input:Input,key:Buffer):Anchor|undefined{
  let value:unknown;try{value=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'))}catch{throw invalid()}
  const parsed=cursorSchema.safeParse(value);if(!parsed.success||parsed.data.filter!==filterHash(input))throw invalid();return parsed.data.anchor
 }
-export const connectionRole=(row:Resource)=>row.kind==='s3'?'storage' as const:row.config.restoreTarget===true?'target' as const:'source' as const
-export function connectionHolds(row:Resource,sourceKeys:readonly string[],targetKeys:readonly string[]){return row.kind==='s3'?{sourceBlocked:false,targetBlocked:false}:{sourceBlocked:sourceKeys.some(key=>sourceBlockMatches(row,key)),targetBlocked:targetKeys.includes(resourceKey(row))}}
+export const connectionRole=(row:Resource)=>isStorageKind(row.kind)?'storage' as const:row.config.restoreTarget===true?'target' as const:'source' as const
+export function connectionHolds(row:Resource,sourceKeys:readonly string[],targetKeys:readonly string[]){return isStorageKind(row.kind)?{sourceBlocked:false,targetBlocked:false}:{sourceBlocked:sourceKeys.some(key=>sourceBlockMatches(row,key)),targetBlocked:targetKeys.includes(resourceKey(row))}}
 const publicFields=['id','name','kind','config','check_status','checked_at','created_at','updated_at','revision'] as const
 const named=sql<string>`lower(name) COLLATE "C"`
 const timeAnchor=sql<string>`to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as('_cursor_created_at')
@@ -38,9 +39,9 @@ export class ConnectionHistoryServices{
   const input=connectionInput(value),key=config.key(),anchor=connectionAnchor(input,key),descending=input.order==='newest'||input.order==='name_desc',direction=descending?'desc':'asc',byName=input.order.startsWith('name_')
   return this.db.transaction().setIsolationLevel('repeatable read').execute(async db=>{
    let filtered=db.selectFrom('connections')
-   if(input.role==='storage')filtered=filtered.where('kind','=','s3')
-   if(input.role==='target')filtered=filtered.where('kind','!=','s3').where(sql<boolean>`config->'restoreTarget'='true'::jsonb`)
-   if(input.role==='source')filtered=filtered.where('kind','!=','s3').where(sql<boolean>`config->'restoreTarget' IS DISTINCT FROM 'true'::jsonb`)
+   if(input.role==='storage')filtered=filtered.where('kind','in',['s3','google_drive_storage'])
+   if(input.role==='target')filtered=filtered.where('kind','not in',['s3','google_drive_storage']).where(sql<boolean>`config->'restoreTarget'='true'::jsonb`)
+   if(input.role==='source')filtered=filtered.where('kind','not in',['s3','google_drive_storage']).where(sql<boolean>`config->'restoreTarget' IS DISTINCT FROM 'true'::jsonb`)
    if(input.kind)filtered=filtered.where('kind','=',input.kind)
    if(input.status)filtered=filtered.where('check_status','=',input.status)
    if(input.search){const pattern='%'+input.search.replace(/[!%_]/g,char=>'!'+char)+'%';filtered=filtered.where(sql<boolean>`name ILIKE ${pattern} ESCAPE '!'`)}

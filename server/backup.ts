@@ -1,3 +1,6 @@
+import {isSourceKind,isStorageKind} from '../shared/connections'
+import {createBackupAdapter} from './source-adapter'
+import {publishStoredArchive,assertDriveStorageOutsideSource} from './storage'
 import {mkdtemp,rm,chmod,statfs} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
@@ -42,14 +45,16 @@ export async function executeBackup(services:Services,runId:string,token:string,
   const db=services.db,{phase,check}=runControl(services,runId,token,signal)
   const run=await db.selectFrom('runs').selectAll().where('id','=',runId).where('execution_token','=',token).executeTakeFirstOrThrow()
   const source=await services.connection(run.source_id),storage=await services.connection(run.storage_id)
-  if(!engineKinds.includes(source.kind as Engine)||storage.kind!=='s3')throw new AppError('INVALID_ENGINE','Unsupported backup configuration.')
-  const config=source.config,secret=unseal<Record<string,unknown>>(source.secret),engine=source.kind as Engine
-  assertProtectedDatabase(String(config.database??''))
+  if(!isSourceKind(source.kind)||!isStorageKind(storage.kind))throw new AppError('INVALID_ENGINE','Unsupported backup configuration.')
+  await assertDriveStorageOutsideSource(db,source,storage,signal)
+  if(source.config.importedArchive)throw new AppError('INVALID_SOURCE','Imported archive identities cannot capture a new source.')
+  const config=source.config,secret=unseal<Record<string,unknown>>(source.secret),engine=source.kind
+  if(engine!=='google_drive')assertProtectedDatabase(String(config.database??''))
   if(config.restoreTarget)throw new AppError('INVALID_SOURCE','A restore target cannot be used as a backup source.')
   const storageConfig=storage.config as StorageConfig
-  const session=createEngineAdapter(engine,{config,secret,signal,checkpoint:check,lockHooks:createSourceLockHooks(services,runId,token)})
+  const session=createBackupAdapter(engine,{config,secret,signal,checkpoint:check,lockHooks:createSourceLockHooks(services,runId,token)},db)
   signal=AbortSignal.any([signal,session.failureSignal])
-  const s3=storageClient(storageConfig,unseal<S3Secret>(storage.secret)),dir=await workingDirectory()
+  const dir=await workingDirectory()
   try{
     await phase('preflight','Checking source identity, server and native client compatibility.')
     const info=await session.connect(),file=join(dir,'backup'+session.archiveExtension)
@@ -60,16 +65,12 @@ export async function executeBackup(services:Services,runId:string,token:string,
     if(signal.aborted)throw signal.reason
     await session.close()
     const size=await assertArchiveSize(file),checksum=await fileSha256(file,signal)
-    const artifactId=randomUUID(),key=[storageConfig.prefix,runId,token,artifactId+session.archiveExtension].filter(Boolean).join('/')
+    const artifactId=randomUUID();let key=[storageConfig.prefix,runId,token,artifactId+session.archiveExtension].filter(Boolean).join('/')
     await phase('uploading',`Uploading ${size} bytes to the configured storage.`)
     // Immutable, attempt-specific object keys; an orphan is safer than deleting data after uncertain publication.
     try{
-      const body=createReadStream(file)
-      try{await s3.send(new PutObjectCommand({Bucket:storageConfig.bucket,Key:key,Body:body,ContentLength:size,IfNoneMatch:'*',Metadata:{sha256:checksum,engine}}),{abortSignal:signal})}
-      finally{body.destroy()}
+      key=await publishStoredArchive(db,storage,{file,key,size,sha256:checksum,engine,artifactId,manifest,toolVersion,extension:session.archiveExtension},signal)
       await check()
-      const head=await s3.send(new HeadObjectCommand({Bucket:storageConfig.bucket,Key:key}),{abortSignal:signal})
-      if(head.ContentLength!==size||head.Metadata?.sha256!==checksum)throw new AppError('ARTIFACT_SIZE_MISMATCH','Uploaded object metadata did not match the archive.')
     }catch(error){
       throw storageBackupFailure(error,signal)
     }
@@ -84,7 +85,6 @@ export async function executeBackup(services:Services,runId:string,token:string,
     })
   }finally{
     await session.close().catch(()=>{})
-    s3.destroy()
     await rm(dir,{recursive:true,force:true}).catch(()=>{})
   }
 }

@@ -15,7 +15,7 @@ export type DeletionReason='locked'|'restore_review'|'restore_active'|'restore_u
 export type DeletionItem={id:string;sourceName:string;storageName:string;size:string;createdAt:string;deletionState:string;eligible:boolean;reason:DeletionReason|null}
 export type DeletionPreview={reviewId:string;expiresAt:string;artifactIds:string[];eligibleCount:number;blockedCount:number;bytes:string;items:DeletionItem[];confirmation:typeof deletionConfirmation}
 export type DeletionAccepted={reviewId:string;idempotencyKey:string;queued:number;jobIds:string[];artifactIds:string[]}
-const extensions={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac'} as const
+const extensions={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac',google_drive:'.skdrive'} as const
 function identifier(id:string){if(!z.uuid().safeParse(id).success)throw new AppError('INVALID_ID','Use a valid deletion review identifier.',422);return id}
 export function deletionIds(value:unknown){const parsed=deletionReviewInput.safeParse(value);if(!parsed.success||new Set(parsed.data.artifactIds.map(id=>id.toLowerCase())).size!==parsed.data.artifactIds.length)throw new AppError('INVALID_DELETION_SELECTION','Select between 1 and 100 distinct snapshot identifiers.',422);return parsed.data.artifactIds.map(id=>id.toLowerCase()).sort()}
 type Artifact=Selectable<Schema['artifacts']>

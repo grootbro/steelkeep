@@ -7,7 +7,7 @@ import type {NotificationKind,NotificationConfig,NotificationEvents} from './not
 
 type DateTime = ColumnType<Date, Date | string | undefined, Date | string>
 interface Connection {
-  id: string; name: string; kind: 'postgres' | 'mysql' | 'mariadb' | 'mongodb' | 'sqlite' | 'redis' | 'clickhouse' | 'mssql' | 's3'; config: Record<string, unknown>;
+  id: string; name: string; kind: 'postgres' | 'mysql' | 'mariadb' | 'mongodb' | 'sqlite' | 'redis' | 'clickhouse' | 'mssql' | 's3' | 'google_drive' | 'google_drive_storage'; config: Record<string, unknown>;
   secret: string; checked_at: DateTime | null; check_status: string; created_at: Generated<Date>; updated_at: Generated<Date>; revision:Generated<number>
 }
 interface Plan {

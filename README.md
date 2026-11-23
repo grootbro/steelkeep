@@ -83,6 +83,20 @@ and [independent runtime evidence](docs/server-runtime.md).
 
 </details>
 
+## Google Drive
+
+Back up a selected Google Drive folder, or use Drive to store database and file
+archives. Connect with Google OAuth from **Connections → Google Drive**.
+
+Drive publications include a portable recovery descriptor. On another server,
+connect the old archive folder, import a chosen copy with full SHA-256 verification,
+and review a separate empty restore target. The old Steelkeep metadata database
+isn't required. Encrypted Drive-file archives use a separately saved recovery key.
+
+The initial file profile supports My Drive, ordinary files and portable
+Docs/Sheets/Slides exports. Read the [Google Drive setup and recovery guide](docs/google-drive.md)
+for OAuth configuration, exact limits, provider requirements and qualification status.
+
 ## Self-host
 
 **You’ll need:** Bun 1.4 for setup, Docker Compose, an S3-compatible bucket with credentials, and network access from the worker to the chosen database. Run setup as the intended non-root service owner. Native package pins are in [Dockerfile.engines](Dockerfile.engines). SQL Server additionally needs the explicit [x64 extension](Dockerfile.mssql) and applicable Microsoft terms; it is not silently downloaded by the default stack.
@@ -188,6 +202,7 @@ Snapshot availability HEAD checks inspect object metadata, not downloaded bytes.
 | [Installation](docs/server-installation.md) | [Architecture](docs/architecture.md) |
 | [Engine profiles and permissions](docs/engine-profiles.md) | [Native tooling](docs/native-tooling.md) |
 | [Sign-in and AI agents](docs/authentication.md) | [Recovery acceptance evidence](docs/acceptance.md) |
+| [Google Drive and portable recovery](docs/google-drive.md) | [Drive setup and limitations](docs/google-drive.md#initial-file-profile-and-limits) |
 | [Retention policies](docs/retention.md) | [Runtime qualification](docs/server-runtime.md) |
 | [Snapshot downloads](docs/snapshot-downloads.md) | [Feature parity and remaining work](docs/databasement-parity.md) |
 | [Reviewed deletion](docs/snapshot-deletion.md) | [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) |

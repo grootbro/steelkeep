@@ -1,3 +1,4 @@
+import {isStorageKind} from '../shared/connections'
 import type {Job,Overview} from './state'
 
 export function activityDays(data:Overview,jobs:Job[]){
@@ -19,7 +20,7 @@ export function activityScale(maximum:number){
 
 export function recentStorage(data:Overview){
   const retained=data.backups.filter(backup=>backup.deletion_state!=='deleted')
-  const rows=data.connections.filter(connection=>connection.kind==='s3').map(connection=>({connection,size:retained.filter(backup=>backup.storage_id===connection.id).reduce((sum,backup)=>sum+BigInt(backup.size),0n)}))
+  const rows=data.connections.filter(connection=>isStorageKind(connection.kind)).map(connection=>({connection,size:retained.filter(backup=>backup.storage_id===connection.id).reduce((sum,backup)=>sum+BigInt(backup.size),0n)}))
   const total=rows.reduce((sum,row)=>sum+row.size,0n)
   return {rows,total,share:(size:bigint)=>total?Number(size*10000n/total)/100:0}
 }

@@ -1,3 +1,6 @@
+import {isSourceKind,isStorageKind} from '../shared/connections'
+import {createBackupAdapter} from './source-adapter'
+import {openStoredArchive} from './storage'
 import {randomUUID,createHash} from 'node:crypto'
 import {createWriteStream} from 'node:fs'
 import {rm} from 'node:fs/promises'
@@ -26,28 +29,28 @@ export async function inspectRestore(services:Services,artifactId:string,targetI
   if(!manifest||manifest.format!==1||manifest.engine!==artifact.engine||!manifest.database||!manifest.objects||!manifest.data||!manifest.sequences)throw new AppError('MANIFEST_UNAVAILABLE','This archive has no supported source validation manifest.')
   if(!/^[a-f0-9]{64}$/.test(artifact.sha256)||!Number.isSafeInteger(Number(artifact.size))||Number(artifact.size)<=0||Number(artifact.size)>maxArchiveBytes)throw new AppError('INVALID_ARTIFACT','Archive metadata is invalid or exceeds the resource limit.')
   const [source,target,storage]=await Promise.all([services.connection(artifact.source_id),services.connection(targetId),services.connection(artifact.storage_id)])
-  if(!engineKinds.includes(target.kind as Engine)||target.kind!==artifact.engine||source.kind!==artifact.engine||storage.kind!=='s3')throw new AppError('ENGINE_MISMATCH','Source archive and target must use the same supported database engine.')
+  if(!isSourceKind(target.kind)||target.kind!==artifact.engine||source.kind!==artifact.engine||!isStorageKind(storage.kind))throw new AppError('ENGINE_MISMATCH','Source archive and target must use the same supported database engine.')
   const config=target.config,sourceConfig=source.config,targetDatabase=String(config.database??'')
   if(!config.restoreTarget||sourceConfig.restoreTarget)throw new AppError('TARGET_NOT_DESIGNATED','Choose a connection explicitly designated as a restore target.')
-  assertProtectedDatabase(targetDatabase);assertProtectedDatabase(manifest.database)
+  if(target.kind!=='google_drive'){assertProtectedDatabase(targetDatabase);assertProtectedDatabase(manifest.database)}
   if(sourceConfig.database!==manifest.database)throw new AppError('IDENTITY_UNCERTAIN','Source configuration differs from the identity recorded in this archive.')
   // Different DB names prove distinct databases even through aliases of one server.
   // Equal names on different hosts remain ambiguous and are deliberately refused.
-  if(source.id===target.id||manifest.database.toLowerCase()===targetDatabase.toLowerCase())throw new AppError('SOURCE_TARGET_CONFLICT','The target must have a different database identity from the recorded source, even when endpoint names differ.')
+  if(source.id===target.id||(target.kind==='google_drive'?manifest.database===targetDatabase:manifest.database.toLowerCase()===targetDatabase.toLowerCase()))throw new AppError('SOURCE_TARGET_CONFLICT','The target must have a different database identity from the recorded source, even when endpoint names differ.')
   const blocks=await services.db.selectFrom('target_blocks').innerJoin('connections','connections.id','target_blocks.target_id')
     .select(['target_blocks.run_id','connections.kind','connections.config']).execute()
   if(blocks.some(b=>resourceKey(b)===resourceKey(target)&&b.run_id!==ownRunId))throw new AppError('TARGET_BLOCKED','This target or an alias is reserved by another restore. Reconcile its outcome before another operation.',409)
-  const session=createEngineAdapter(target.kind as Engine,{config,secret:unseal<Record<string,unknown>>(target.secret),signal:AbortSignal.timeout(30000)})
+  const session=createBackupAdapter(target.kind,{config,secret:unseal<Record<string,unknown>>(target.secret),signal:AbortSignal.timeout(30000)},services.db)
   try{
     const identity=await session.connect()
-    assertProtectedDatabase(identity.database)
+    if(target.kind!=='google_drive')assertProtectedDatabase(identity.database)
     if(identity.database!==targetDatabase)throw new AppError('IDENTITY_UNCERTAIN','The target did not confirm its configured database identity.')
     if(target.kind==='sqlite'&&(!manifest.binding||manifest.binding===identity.binding))throw new AppError('SOURCE_TARGET_CONFLICT','SQLite source and target file identities must be proven distinct.')
     if(target.kind==='redis'&&Number.parseInt(manifest.serverVersion)!==Number.parseInt(identity.serverVersion))throw new AppError('VERSION_MISMATCH','Redis source and target must use the same major version.')
     await session.restrictedRestoreRole()
     if(!await session.empty())throw new AppError('TARGET_NOT_EMPTY','The designated precreated restore target is not empty. No restore data has been applied.')
     const fingerprint=digest({artifact:artifact.id,checksum:artifact.sha256,size:artifact.size,manifest:digest(manifest),source:{id:source.id,config:source.config,secret:digest(source.secret)},target:{id:target.id,config:target.config,secret:digest(target.secret),identity},storage:{id:storage.id,config:storage.config,secret:digest(storage.secret)}})
-    return {artifactId,targetId,fingerprint,engine:target.kind as Engine,sourceDatabase:manifest.database,targetDatabase:identity.database,
+    return {artifactId,targetId,fingerprint,engine:target.kind,sourceDatabase:manifest.database,targetDatabase:identity.database,
       sourceVersion:manifest.serverVersion,targetVersion:identity.serverVersion,archiveBytes:Number(artifact.size),sha256:artifact.sha256,
       checks:{trustedArtifact:true,targetEmpty:true,targetAllowlisted:true,distinctDatabase:true},warnings:['Restore validation checks captured structure, serialized data and sequence state. Application-level acceptance remains separate.']}
   }finally{await session.close().catch(()=>{})}
@@ -68,25 +71,21 @@ export async function executeRestore(services:Services,runId:string,token:string
   ])
   if(artifact.storage_id!==storage.id||artifact.source_id!==run.source_id)throw new AppError('REVIEW_CHANGED','The restore run does not match the reviewed artifact.')
   const engine=review.engine,config=target.config,secret=unseal<Record<string,unknown>>(target.secret),s3config=storage.config as StorageConfig
-  const session=createEngineAdapter(engine,{config,secret,signal,checkpoint:check})
-  const s3=storageClient(s3config,unseal<S3Secret>(storage.secret)),dir=await workingDirectory(),file=join(dir,randomUUID()+session.archiveExtension)
+  const session=createBackupAdapter(engine,{config,secret,signal,checkpoint:check},db)
+  const dir=await workingDirectory(),file=join(dir,randomUUID()+session.archiveExtension)
   signal=AbortSignal.any([signal,session.failureSignal])
   try{
     await phase('downloading','Downloading the trusted artifact into bounded private temporary storage.')
-    const response=await s3.send(new GetObjectCommand({Bucket:s3config.bucket,Key:artifact.object_key}),{abortSignal:signal})
-    if(!response.Body||response.ContentLength!==Number(artifact.size)){
-      if(response.Body instanceof Readable)response.Body.destroy()
-      else if(response.Body)await response.Body.transformToWebStream().cancel().catch(()=>{})
-      throw new AppError('ARTIFACT_SIZE_MISMATCH','Stored archive size differs from its published metadata.')
-    }
-    const input=response.Body instanceof Readable?response.Body:Readable.fromWeb(response.Body.transformToWebStream() as unknown as NodeReadableStream<Uint8Array>)
+    const download=await openStoredArchive(db,storage,artifact.object_key,signal)
+    const responseLength=download.length,input=download.body
+    if(responseLength!==Number(artifact.size)){download.close();throw new AppError('ARTIFACT_SIZE_MISMATCH','Stored archive size differs from its published metadata.')}
     const hash=createHash('sha256');let bytes=0
     const bound=new Transform({transform(chunk:Buffer,_encoding,callback){
       bytes+=chunk.length
       if(bytes>Number(artifact.size)||bytes>maxArchiveBytes){callback(new AppError('RESOURCE_LIMIT','Downloaded archive exceeded its published size.'));return}
       hash.update(chunk);callback(null,chunk)
     }})
-    await pipeline(input,bound,createWriteStream(file,{flags:'wx',mode:0o600}),{signal})
+    try{await pipeline(input,bound,createWriteStream(file,{flags:'wx',mode:0o600}),{signal})}finally{download.close()}
     await phase('verifying','Checking the complete downloaded archive SHA-256 before any target write.')
     if(bytes!==Number(artifact.size)||hash.digest('hex')!==artifact.sha256)throw new AppError('CHECKSUM_MISMATCH','Archive integrity verification failed. No restore data was applied.')
     // Recheck after download: a UI review or earlier check never authorizes a changed target.
@@ -112,6 +111,6 @@ export async function executeRestore(services:Services,runId:string,token:string
       await trx.insertInto('events').values({run_id:runId,phase:'completed',message:'Native restore completed; archive integrity, schema, row digests and sequence checks passed. Application acceptance is a separate step.'}).execute()
     })
   }finally{
-    await session.close().catch(()=>{});s3.destroy();await rm(dir,{recursive:true,force:true}).catch(()=>{})
+    await session.close().catch(()=>{});await rm(dir,{recursive:true,force:true}).catch(()=>{})
   }
 }

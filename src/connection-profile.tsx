@@ -1,3 +1,4 @@
+import {isStorageKind} from '../shared/connections'
 import {useState} from 'react'
 import {useQuery} from '@tanstack/react-query'
 import {Link} from '@tanstack/react-router'
@@ -31,14 +32,14 @@ type Props={
 export function ConnectionProfile({connection,data,jobs,busy,testing,canConfigure,canRestore,pendingPlans,canRunPlan,artifactChecks,checkingBackup,summaryAvailable=false,downloadAvailable=false,deletionAvailable=false,actor,scopes,onArtifactChanged,onRefresh,name,onTest,onEdit,onCreatePlan,onEditPlan,onRunPlan,onJob,onCheckBackup,onRestore}:Props){
   const summary=useQuery({queryKey:['connection-summary',actor,connection.id,connection.revision],queryFn:()=>api<ConnectionSummary>(`/connections/${connection.id}/summary`),enabled:summaryAvailable&&!!actor&&scopes.includes('read'),retry:false,refetchInterval:query=>query.state.error instanceof ApiError&&query.state.error.status===404?false:10000})
   const full=summaryAvailable&&!summary.isError&&summary.data?.scope==='all-recorded-history'&&summary.data.snapshots?.scope==='metadata-records'?summary.data:null
-  const storage=connection.kind==='s3',target=!storage&&connection.config.restoreTarget===true
+  const storage=isStorageKind(connection.kind),target=!storage&&connection.config.restoreTarget===true
   const plans=data.plans.filter(plan=>storage?plan.storage_id===connection.id:!target&&plan.source_id===connection.id)
   const snapshots=data.backups.filter(backup=>storage?backup.storage_id===connection.id:!target&&backup.source_id===connection.id)
   const operations=jobs.filter(job=>storage?job.storage_id===connection.id:target?job.target_id===connection.id:job.source_id===connection.id)
   const recentSnapshots=[...snapshots].sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,8)
   const config=connection.config,role=storage?'Backup storage':target?'Restore destination':'Backup source'
   const facts:ReadonlyArray<readonly[string,string]> = storage?
-    [['Endpoint',String(config.endpoint??'—')],['Bucket',String(config.bucket??'—')],['Region',String(config.region??'—')],['Object prefix',String(config.prefix||'Bucket root')]]:
+    connection.kind==='google_drive_storage'?[['Google Drive folder',String(config.folderName??config.folderId??'—')],['Folder ID',String(config.folderId??'—')],['Access',config.readOnly?'Recovery only':'Archive storage']]:[['Endpoint',String(config.endpoint??'—')],['Bucket',String(config.bucket??'—')],['Region',String(config.region??'—')],['Object prefix',String(config.prefix||'Bucket root')]]:
     connection.kind==='sqlite'?[['Database file',String(config.path??'—')]]:
     [['Host / port',`${String(config.host??'—')}:${String(config.port??'—')}`],[connection.kind==='redis'?'Logical database':'Database',String(connection.kind==='redis'?config.dbIndex:config.database??'—')],['Username',String(config.user??'—')],['TLS verification',config.tls===true?'Enabled':'Disabled'],...(connection.kind==='mongodb'?[['Authentication DB',String(config.authDatabase??'admin')] as const]:[])]
   return <div className="connection-profile">

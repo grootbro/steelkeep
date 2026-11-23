@@ -8,7 +8,7 @@ import {audit} from './agents'
 import {RetentionServices,retentionSelection} from './retention'
 import {deletionPublication,deletionProtection} from './artifact-deletions'
 
-const extensions:Record<string,string>={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac'}
+const extensions:Record<string,string>={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac',google_drive:'.skdrive'}
 function missing(error:unknown){const e=error as {name?:string;$metadata?:{httpStatusCode?:number}};return e?.$metadata?.httpStatusCode===404||e?.name==='NoSuchKey'||e?.name==='NoSuchVersion'||e?.name==='NotFound'}
 function deletionFailure(error:unknown){
  if(error instanceof AppError)return {failure:safeFailure(error),retry:false}

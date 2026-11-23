@@ -48,6 +48,7 @@ export class RetentionServices{
   return this.db.transaction().execute(async trx=>{
    const plan=await trx.selectFrom('plans').selectAll().where('id','=',planId).forUpdate().executeTakeFirst()
    if(!plan)throw new AppError('NOT_FOUND','Backup plan not found.',404)
+   if(input.enabled){const storage=await trx.selectFrom('connections').select('kind').where('id','=',plan.storage_id).executeTakeFirstOrThrow();if(storage.kind==='google_drive_storage')throw new AppError('DRIVE_RETENTION_UNSUPPORTED','Google Drive archives are kept until you remove them in Drive. Automatic conditional deletion is not supported by this provider.',409)}
    if(plan.retention_revision!==input.revision)throw new AppError('REVISION_CONFLICT','The cleanup policy changed. Reload and preview it again.',409)
    if(input.enabled&&(!plan.retention_enabled||JSON.stringify(plan.retention_policy)!==JSON.stringify(policy))&&input.confirmDeletion!==true)throw new AppError('RETENTION_CONFIRMATION_REQUIRED','Explicitly confirm permanent deletion before enabling or changing active cleanup.',409)
    const changed=await trx.updateTable('plans').set({retention_policy:policy,retention_enabled:input.enabled,retention_revision:plan.retention_revision+1,retention_checked_at:null,retention_error_code:null,retention_error_message:null}).where('id','=',planId).returningAll().executeTakeFirstOrThrow()

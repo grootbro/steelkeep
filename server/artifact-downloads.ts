@@ -7,7 +7,7 @@ import {audit} from './agents'
 import {AppError} from './security'
 import {maxArchiveBytes} from './process'
 
-const extensions={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac'} as const
+const extensions={postgres:'.dump',mysql:'.sql',mariadb:'.sql',mongodb:'.archive.gz',sqlite:'.sqlite',redis:'.redis.ndjson',clickhouse:'.zip',mssql:'.bacpac',google_drive:'.skdrive'} as const
 type DownloadArtifact={id:string;storage_id:string;object_key:string;size:string;sha256:string;engine:string;deletion_state:string}
 export type DownloadSource={length:number|undefined;body:AsyncIterable<Uint8Array>;close:()=>void}
 export type DownloadOpen=(artifact:DownloadArtifact,signal:AbortSignal)=>Promise<DownloadSource>
