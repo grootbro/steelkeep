@@ -65,3 +65,18 @@ jobs:
           openssl rand -hex 32 > "$STEELKEEP_TOKEN_FILE"
       - run: bun server/migrate.ts
       - run: bun test tests/google-drive.integration.test.ts
+      - run: bun run build
+      - name: Install isolated browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Check native Drive interface
+        id: drive-ui
+        env:
+          STEELKEEP_UI_ACCEPTANCE: github-google-drive
+        run: node .github/scripts/check-google-drive.cjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() && (steps.drive-ui.outcome == 'success' || steps.drive-ui.outcome == 'failure') }}
+        with:
+          name: google-drive-ui
+          path: output/playwright/google-drive-ui/
+          retention-days: 7
+          if-no-files-found: warn

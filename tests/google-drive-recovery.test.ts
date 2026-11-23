@@ -15,8 +15,11 @@ const archive=()=>file(archiveId,'application/octet-stream',{steelkeepArchive:'1
 const sidecar=()=>file(recoveryId,'application/json',{steelkeepRecovery:'1',archiveId,artifactId})
 
 test('portable recovery validates explicit profile, full manifest identity and bounded size',()=>{
+ const previous=process.env.DATABASE_URL;process.env.DATABASE_URL='postgresql://synthetic@127.0.0.1/steelkeep_unit_metadata'
+ try{
  expect(parsePortableArchive(descriptor)).toEqual(descriptor)
  for(const invalid of [{...descriptor,format:'other'},{...descriptor,engine:'unrecognized'},{...descriptor,size:'2147483649'},{...descriptor,size:'0'},{...descriptor,size:'1e2'},{...descriptor,sha256:'not-a-digest'},{...descriptor,sourceDatabase:'other'}, {...descriptor,manifest:{...manifest,engine:'mysql'}},{...descriptor,manifest:{...manifest,objects:[]}}, {...descriptor,createdAt:'not-a-time'}])expect(()=>parsePortableArchive(invalid)).toThrow()
+ }finally{if(previous===undefined)delete process.env.DATABASE_URL;else process.env.DATABASE_URL=previous}
 })
 
 test('cross-project public properties and legacy private properties bind the same explicit archive',()=>{
