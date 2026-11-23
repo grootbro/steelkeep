@@ -1,6 +1,12 @@
-import {test,expect} from 'bun:test'
+import {test,expect,spyOn} from 'bun:test'
 import {createHash} from 'node:crypto'
-import {GoogleDriveOAuth,googleAuthorization,googleDriveScopes,parseGoogleTokens,requestGoogleTokens,validateGoogleOAuthConfiguration} from '../server/google-drive/oauth'
+import {mkdtemp,writeFile,rm} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
+import {GoogleDriveOAuth,googleAuthorization,googleDriveScopes,googleGrantSupports,parseGoogleTokens,requestGoogleTokens,validateGoogleOAuthConfiguration} from '../server/google-drive/oauth'
+import {googleDriveCallbackInput} from '../server/google-drive/routes'
+import {Services} from '../server/services'
+import {createApp} from '../server/app'
 import {AppError} from '../server/security'
 import type {Schema} from '../server/db'
 import type {Kysely} from 'kysely'
@@ -18,7 +24,7 @@ test('Google OAuth callback is exact, approved-origin and HTTPS bound',()=>{
 
 test('Google authorization creates independent one-use state and S256 verifier for each minimal purpose',()=>{
  const states=new Set<string>(),verifiers=new Set<string>()
- for(const purpose of ['source','restore','storage','recovery'] as const){
+ for(const purpose of ['account','source','restore','storage','recovery'] as const){
   const value=googleAuthorization(configuration,purpose),url=new URL(value.authorizationUrl)
   expect(url.origin+url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth')
   expect(url.searchParams.get('scope')).toBe(googleDriveScopes[purpose])
@@ -33,7 +39,60 @@ test('Google authorization creates independent one-use state and S256 verifier f
   expect(value.authorizationUrl).not.toContain(value.verifier)
   states.add(value.state);verifiers.add(value.verifier)
  }
- expect(states.size).toBe(4);expect(verifiers.size).toBe(4)
+ expect(states.size).toBe(5);expect(verifiers.size).toBe(5)
+})
+
+test('one Google account authorization covers both roles only with both explicitly granted scopes',()=>{
+ const scopes=googleDriveScopes.account.split(' '),grant={purpose:'account' as const,status:'active' as const,scopes}
+ expect(googleGrantSupports(grant,'source')).toBe(true)
+ expect(googleGrantSupports(grant,'storage')).toBe(true)
+ expect(googleGrantSupports(grant,'restore')).toBe(true)
+ expect(googleGrantSupports(grant,'recovery')).toBe(true)
+ expect(googleGrantSupports({...grant,scopes:[googleDriveScopes.source]},'storage')).toBe(false)
+ expect(googleGrantSupports({...grant,status:'revoked'},'source')).toBe(false)
+ expect(googleGrantSupports({purpose:'source',status:'active',scopes:[googleDriveScopes.source]},'storage')).toBe(false)
+ const combined=parseGoogleTokens(tokens([...scopes].reverse().join(' ')),'account')
+ expect(new Set(combined.scopes)).toEqual(new Set(scopes))
+ const {scope:_,refresh_token:__,...refresh}=tokens(googleDriveScopes.account)
+ expect(parseGoogleTokens(refresh,'account','synthetic-old-refresh-token').scopes).toEqual(scopes)
+ expect(()=>parseGoogleTokens(tokens(googleDriveScopes.source),'account')).toThrow()
+ expect(()=>parseGoogleTokens(tokens(googleDriveScopes.account+' openid'),'account')).toThrow()
+})
+
+test('Google callback accepts bounded response metadata and verifies its optional issuer',()=>{
+ const request=(query:string)=>new Request(configuration.redirectUri+'?'+query)
+ expect(googleDriveCallbackInput(request('state=synthetic-state&code=synthetic-code&iss=https%3A%2F%2Faccounts.google.com&hd=example.test&future_google_metadata=v1'))).toEqual({state:'synthetic-state',code:'synthetic-code',error:undefined})
+ expect(googleDriveCallbackInput(request('state=synthetic-state&error=access_denied&error_description=synthetic-denial&error_subtype=access_denied'))).toMatchObject({state:'synthetic-state',error:'access_denied'})
+ for(const query of ['state=first&state=second','state=first&iss=https://evil.example.test','state=first&iss=','state=first&code='+ 'a'.repeat(4097),'state=first&metadata='+'a'.repeat(32769)])expect(()=>googleDriveCallbackInput(request(query))).toThrow()
+})
+
+test('actual public callback route handles Google iss/hd/error metadata without raw validation JSON',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'steelkeep-google-callback-')),secretPath=join(directory,'client-secret')
+ const settings=['STEELKEEP_GOOGLE_CLIENT_ID','STEELKEEP_GOOGLE_CLIENT_SECRET_FILE','STEELKEEP_GOOGLE_REDIRECT_URI','STEELKEEP_ALLOWED_ORIGINS','STEELKEEP_PUBLIC_HOSTS','STEELKEEP_SCOPED_TOKENS_FILE'] as const
+ const previous=Object.fromEntries(settings.map(name=>[name,process.env[name]]))
+ const ticket='gdc_'+'a'.repeat(64),calls:Array<{state:string;code?:string;error?:string}>=[]
+ const callback=spyOn(GoogleDriveOAuth.prototype,'completeCallback').mockImplementation(async input=>{calls.push(input);if(input.error)throw new AppError('GOOGLE_OAUTH_DENIED','Synthetic denial.');return {claimTicket:ticket,expiresAt:new Date(Date.now()+300000).toISOString()}})
+ try{
+  await writeFile(secretPath,configuration.clientSecret,{mode:0o600})
+  process.env.STEELKEEP_GOOGLE_CLIENT_ID=configuration.clientId;process.env.STEELKEEP_GOOGLE_CLIENT_SECRET_FILE=secretPath;process.env.STEELKEEP_GOOGLE_REDIRECT_URI=configuration.redirectUri;process.env.STEELKEEP_ALLOWED_ORIGINS='https://backup.example.test';process.env.STEELKEEP_PUBLIC_HOSTS='backup.example.test';delete process.env.STEELKEEP_SCOPED_TOKENS_FILE
+  const db=new Proxy({},{get(){throw new Error('The callback route must not query owner sessions.')}}) as Kysely<Schema>
+  const app=createApp(new Services(db))
+  for(const metadata of ['iss=https%3A%2F%2Faccounts.google.com&scope=synthetic-scope','iss=https%3A%2F%2Faccounts.google.com&hd=example.test&authuser=0&prompt=consent','future_google_metadata=accepted']){
+   const response=await app.handle(new Request(configuration.redirectUri+'?state=synthetic-state&code=synthetic-code&'+metadata))
+   expect(response.status).toBe(303);expect(await response.text()).toBe('')
+   expect(response.headers.get('location')).toBe('https://backup.example.test/connections#google-drive='+ticket)
+   expect(response.headers.get('referrer-policy')).toBe('no-referrer');expect(response.headers.get('cache-control')).toBe('no-store')
+  }
+  expect(calls).toHaveLength(3);expect(calls.every(value=>value.state==='synthetic-state'&&value.code==='synthetic-code')).toBe(true)
+  const denied=await app.handle(new Request(configuration.redirectUri+'?state=synthetic-state&error=access_denied&error_description=synthetic-private-text&error_subtype=access_denied&iss=https%3A%2F%2Faccounts.google.com'))
+  expect(denied.status).toBe(303);expect(await denied.text()).toBe('');expect(denied.headers.get('location')).toBe('https://backup.example.test/connections#google-drive-error=authorization_failed')
+  const count=calls.length
+  for(const metadata of ['iss=https%3A%2F%2Fevil.example.test','iss=','state=duplicate','future_metadata='+'a'.repeat(32769)]){
+   const response=await app.handle(new Request(configuration.redirectUri+'?state=synthetic-state&code=synthetic-code&'+metadata))
+   expect(response.status).toBe(303);expect(await response.text()).toBe('');expect(response.headers.get('location')).toBe('https://backup.example.test/connections#google-drive-error=authorization_failed')
+  }
+  expect(calls).toHaveLength(count)
+ }finally{callback.mockRestore();for(const name of settings){const value=previous[name];if(value===undefined)delete process.env[name];else process.env[name]=value}await rm(directory,{recursive:true,force:true})}
 })
 
 test('Google token parser preserves omitted refresh tokens, rotates provided tokens and rejects scope widening',()=>{

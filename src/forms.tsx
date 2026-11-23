@@ -1,3 +1,4 @@
+import {GoogleDriveConnectionForm} from './google-drive'
 import {isStorageKind} from '../shared/connections'
 import {Fragment,useState,type FormEvent} from 'react'
 import {Archive,ArrowDownToLine,ArrowRight,CheckCircle2,Clock,Database,HardDrive,LockKeyhole,ShieldAlert} from 'lucide-react'
@@ -26,9 +27,9 @@ function destinationRequirement(kind:Connection['kind']){
   return 'Use a separate precreated empty database and a dedicated restricted restore role. The original source stays protected.'
 }
 
-export function ConnectionForm({connection,onDone,onReload}:{connection?:Connection;onDone:()=>void;onReload?:()=>Promise<void>}){
+export function ConnectionForm({connection,onDone,onReload,connections=[],scopes=[],initialKind,onChanged=()=>{}}:{connection?:Connection;onDone:()=>void;onReload?:()=>Promise<void>;connections?:Connection[];scopes?:readonly string[];initialKind?:Connection['kind'];onChanged?:()=>void|Promise<void>}){
   const editing=!!connection,c=connection?.config??{}
-  const [kind,setKind]=useState<Connection['kind']>(connection?.kind??'postgres')
+  const [kind,setKind]=useState<Connection['kind']>(connection?.kind??initialKind??'postgres')
   const [target,setTarget]=useState(c.restoreTarget===true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState(false)
   const profile=engineProfiles.find(profile=>profile.kind===kind)
   const defaults:Record<string,number>={postgres:5432,mysql:3306,mariadb:3306,mongodb:27017,redis:6379,clickhouse:8443,mssql:1433}
@@ -68,9 +69,11 @@ export function ConnectionForm({connection,onDone,onReload}:{connection?:Connect
     finally{setBusy(false)}
   }
   if(connection&&(kind==='google_drive'||kind==='google_drive_storage'))return <form className="operation-form" onSubmit={renameDrive}><label>Name<input name="name" defaultValue={connection.name} required maxLength={80}/></label><p className="form-hint">Google account, folder and role identify this connection. Add a new Google Drive connection to change them.</p>{error&&<p role="alert">{error}</p>}<Submit busy={busy}>Save name</Submit></form>
+  const typePicker=<label>Connection type<select aria-label="Connection type" value={kind} disabled={editing} onChange={event=>{setKind(event.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="google_drive">Google Drive</option><option value="s3">S3-compatible storage</option></select></label>
+  if(!editing&&kind==='google_drive')return <div className="operation-form connection-form"><div className="form-section">{typePicker}</div><GoogleDriveConnectionForm connections={connections} scopes={scopes} onChanged={onChanged} onDone={onDone}/></div>
   return <form onSubmit={submit} className="operation-form connection-form" aria-busy={busy}><fieldset className="operation-fields" disabled={busy}>
     <div className="form-section">
-      <label>Connection type<select value={kind} disabled={editing} onChange={event=>{setKind(event.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="s3">S3-compatible storage</option></select></label>
+      {typePicker}
       <label>Name<input name="name" required maxLength={80} defaultValue={connection?.name} placeholder={kind==='s3'?'Backup storage':'Application database'}/></label>
       {editing&&<p className="form-hint">Address, database and destination role identify this connection’s history. Credentials and display name can be updated here.</p>}
       {kind!=='s3'&&<div className="connection-purpose"><div className="form-context"><Database size={17}/><div><strong>{target?'Restore destination':'Backup source'}</strong><p>{target?'Receives a restore after a separate safety review.':'The database Steelkeep will read when running a backup.'}</p></div></div><label className="checkbox"><input type="checkbox" checked={target} disabled={editing} onChange={event=>setTarget(event.target.checked)}/>Use only as a restore destination</label></div>}
@@ -125,12 +128,12 @@ export function PlanForm({connections,plan,initialConnection,onDone}:{connection
   return <form onSubmit={submit} className="operation-form plan-form" aria-busy={busy}><fieldset className="operation-fields" disabled={busy}>
     <div className="form-section"><label>Plan name<input name="name" required maxLength={80} defaultValue={plan?.name} placeholder="Daily application backup"/></label></div>
     <div className="form-section"><h3><Database size={16}/>What to back up</h3>
-      {plan?<div className="plan-fixed-connection"><strong>{sourceConnection?.name??'Source connection unavailable'}</strong><span>{sourceConnection?engineName(sourceConnection.kind):'The plan keeps its original source.'}</span></div>:<><label>Source database<select value={source} onChange={event=>setSource(event.target.value)} required><option value="">Choose a database</option>{sources.map(connection=><option key={connection.id} value={connection.id} disabled={connection.blocked}>{connection.name} · {engineName(connection.kind)}{connection.blocked?' · blocked':''}</option>)}</select></label>{!sources.length&&<p className="form-hint">Add a source database in <a href="/connections">Connections</a> first.</p>}</>}
+      {plan?<div className="plan-fixed-connection"><strong>{sourceConnection?.name??'Source connection unavailable'}</strong><span>{sourceConnection?engineName(sourceConnection.kind):'The plan keeps its original source.'}</span></div>:<><label>Backup source<select aria-label="Backup source" value={source} onChange={event=>setSource(event.target.value)} required><option value="">Choose a backup source</option>{sources.map(connection=><option key={connection.id} value={connection.id} disabled={connection.blocked}>{connection.name} · {engineName(connection.kind)}{connection.blocked?' · blocked':''}</option>)}</select></label>{!sources.length&&<p className="form-hint">Add a database or Drive source in <a href="/connections">Connections</a> first.</p>}</>}
       {sourceConnection&&<p className="form-hint">{sourceConnection.blocked?'This source is blocked pending operator review. New backups cannot run.':sourceConnection.check_status==='available'?'Connection was reachable at its last check. Backup permissions are verified during execution.':sourceConnection.check_status==='failed'?'Its last availability check failed. Review the connection before running a backup.':'This source has not passed an availability check. You can test it in Connections.'}</p>}
     </div>
     <div className="form-section"><h3><HardDrive size={16}/>Where to store</h3>
-      {plan?<div className="plan-fixed-connection"><strong>{storageConnection?.name??'Storage connection unavailable'}</strong><span>{storageConnection?String(storageConnection.config.bucket):'The plan keeps its original storage.'}</span></div>:<><label>Storage volume<select value={storage} onChange={event=>setStorage(event.target.value)} required><option value="">Choose S3 storage</option>{volumes.map(connection=><option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>{!volumes.length&&<p className="form-hint">Add S3-compatible storage in <a href="/connections">Connections</a> first.</p>}</>}
-      {storageConnection&&<p className="form-hint">Bucket: <span className="mono">{String(storageConnection.config.bucket)}</span>{storageConnection.config.prefix?<> · prefix: <span className="mono">{String(storageConnection.config.prefix)}</span></>:null}</p>}
+      {plan?<div className="plan-fixed-connection"><strong>{storageConnection?.name??'Storage connection unavailable'}</strong><span>{storageConnection?String(storageConnection.config.folderName??storageConnection.config.folderId??storageConnection.config.bucket):'The plan keeps its original storage.'}</span></div>:<><label>Backup storage<select aria-label="Backup storage" value={storage} onChange={event=>setStorage(event.target.value)} required><option value="">Choose backup storage</option>{volumes.map(connection=><option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>{!volumes.length&&<p className="form-hint">Add S3-compatible or Drive storage in <a href="/connections">Connections</a> first.</p>}</>}
+      {storageConnection&&<p className="form-hint">{storageConnection.kind==='google_drive_storage'?'Google Drive folder:':'Bucket:'} <span className="mono">{String(storageConnection.config.folderName??storageConnection.config.folderId??storageConnection.config.bucket)}</span>{storageConnection.config.prefix?<> · prefix: <span className="mono">{String(storageConnection.config.prefix)}</span></>:null}</p>}
     </div>
     <div className="form-section"><h3><Clock size={16}/>When to run</h3>
       <label className="checkbox"><input type="checkbox" checked={scheduled} onChange={event=>setScheduled(event.target.checked)}/>Run on a schedule</label>

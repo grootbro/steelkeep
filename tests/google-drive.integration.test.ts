@@ -1,4 +1,4 @@
-import {test,expect} from 'bun:test'
+import {test,expect,spyOn} from 'bun:test'
 import {createHash,randomBytes,randomUUID} from 'node:crypto'
 import {sql} from 'kysely'
 import {connectDb} from '../server/db'
@@ -8,6 +8,10 @@ import {GoogleDriveOAuth,googleDriveScopes,type GoogleDrivePurpose} from '../ser
 import {GoogleDriveRecovery,recoveryImportKey} from '../server/google-drive/recovery'
 import type {GoogleDriveClient,DriveFile} from '../server/google-drive/client'
 import type {PortableArchive} from '../server/storage'
+import {Services} from '../server/services'
+import {createApp} from '../server/app'
+import {allScopes,type Principal} from '../server/auth'
+import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 
 const acceptance=process.env.STEELKEEP_GOOGLE_DRIVE_ACCEPTANCE==='synthetic-ci'?test:test.skip
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex')
@@ -18,11 +22,11 @@ acceptance('Google Drive OAuth lifecycle and portable import use real isolated P
  if(url.protocol!=='postgresql:'||url.hostname!=='127.0.0.1'||url.port!=='5432'||url.pathname!=='/steelkeep_drive_ci'||url.username!=='steelkeep_drive_ci'||url.password!=='synthetic-drive-ci-only'||url.search||url.hash)throw new Error('Use only the exact disposable Google Drive CI database.')
  const {db}=connectDb(),nonce=randomBytes(16).toString('hex'),owner='drive-proof:'+nonce,other=owner+':other',actors=[owner,other],key=config.key()
  const configuration={clientId:'synthetic-ci-client.apps.googleusercontent.com',clientSecret:'synthetic-google-ci-secret-'+nonce,redirectUri:'https://backup.example.test/api/v1/google-drive/oauth/callback'}
- const ownedStorageIds=new Set<string>(),requestKeys=new Set<string>(),ownedTargetIds=new Set<string>()
+ const ownedStorageIds=new Set<string>(),requestKeys=new Set<string>(),ownedTargetIds=new Set<string>(),ownedAgentIds=new Set<string>(),ownedAgentTokenIds=new Set<string>(),ownedConfiguredIds=new Set<string>()
  let guarded=false
  try{
   expect((await sql<{database:string;actor:string}>`SELECT current_database() AS database,current_user AS actor`.execute(db)).rows[0]).toEqual({database:'steelkeep_drive_ci',actor:'steelkeep_drive_ci'})
-  expect((await sql<{version:number}>`SELECT max(version)::integer AS version FROM steelkeep_migrations`.execute(db)).rows[0].version).toBe(12)
+  expect((await sql<{version:number}>`SELECT max(version)::integer AS version FROM steelkeep_migrations`.execute(db)).rows[0].version).toBe(13)
   const fresh=(await sql<{connections:number;runs:number;artifacts:number;owners:number;outbox:number;states:number;grants:number}>`SELECT (SELECT count(*)::integer FROM connections) AS connections,(SELECT count(*)::integer FROM runs) AS runs,(SELECT count(*)::integer FROM artifacts) AS artifacts,(SELECT count(*)::integer FROM owner_account) AS owners,(SELECT count(*)::integer FROM outbox) AS outbox,(SELECT count(*)::integer FROM google_drive_oauth_states) AS states,(SELECT count(*)::integer FROM google_drive_grants) AS grants`.execute(db)).rows[0]
   expect(fresh).toEqual({connections:0,runs:0,artifacts:0,owners:0,outbox:0,states:0,grants:0});guarded=true
 
@@ -106,6 +110,44 @@ acceptance('Google Drive OAuth lifecycle and portable import use real isolated P
   const revoked=(await sql<{secret:string;revision:number;status:string}>`SELECT secret,revision,status FROM google_drive_grants WHERE id=${writable.id}`.execute(db)).rows[0]
   expect(revoked.status).toBe('revoked');expect(revoked.revision).toBe(2);expect(unseal(revoked.secret,key)).toEqual({})
   const readOnly=await connected('recovery');expect(readOnly.scopes).toEqual([googleDriveScopes.source]);expect(readOnly.purpose).toBe('recovery')
+  const combined=await connected('account')
+  expect(new Set(combined.scopes)).toEqual(new Set(googleDriveScopes.account.split(' ')))
+  for(const role of ['source','storage','restore','recovery'] as const){expect((await oauth.grant(combined.id,role)).id).toBe(combined.id);expect(await oauth.accessToken(combined.id,role)).toBe('synthetic-first-access-'+nonce)}
+  const services=new Services(db),principal:Principal={actor:owner,scopes:allScopes,credentialKind:'installation'}
+  const agent=await services.agents.create(principal,{name:'Synthetic Drive configurator '+nonce});ownedAgentIds.add(agent.id);actors.push('agent:'+agent.id)
+  const configurator=await services.agents.issue(principal,agent.id,{name:'Synthetic configure proof',scopes:['read','configure'],expiresInHours:1}),reader=await services.agents.issue(principal,agent.id,{name:'Synthetic read proof',scopes:['read'],expiresInHours:1});ownedAgentTokenIds.add(configurator.id);ownedAgentTokenIds.add(reader.id)
+  const app=createApp(services),request=(path:string,token:string,body?:unknown)=>app.handle(new Request('http://localhost'+path,{method:body===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,...(body===undefined?{}:{'content-type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)}))
+  const safeCatalog=await request('/api/v1/google-drive/accounts',configurator.token);expect(safeCatalog.status).toBe(200)
+  const catalog=await safeCatalog.json() as Array<Record<string,unknown>>
+  expect(catalog.some(item=>item.id===combined.id&&item.purpose==='account')).toBe(true)
+  expect(catalog.every(item=>!Object.hasOwn(item,'secret')&&!Object.hasOwn(item,'actor'))).toBe(true)
+  expect(JSON.stringify(catalog)).not.toContain(firstRefresh)
+  expect((await request('/api/v1/google-drive/accounts',reader.token)).status).toBe(403)
+  expect((await request('/api/v1/google-drive/oauth/start',configurator.token,{purpose:'account'})).status).toBe(403)
+  expect((await request('/api/v1/google-drive/recovery-key',configurator.token)).status).toBe(403)
+  const actualAccessToken=GoogleDriveOAuth.prototype.accessToken
+  const access=spyOn(GoogleDriveOAuth.prototype,'accessToken').mockImplementation((id,role,signal,force)=>actualAccessToken.call(oauth,id,role,signal,force))
+  const provider=spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{
+   const url=new URL(input instanceof Request?input.url:String(input));expect(url.origin).toBe('https://www.googleapis.com');expect(init?.method).toBe('GET')
+   expect(new Headers(init?.headers).get('authorization')).toBe('Bearer synthetic-first-access-'+nonce)
+   if(url.pathname==='/drive/v3/about')return Response.json({user:{permissionId:'synthetic-account-'+nonce}})
+   const id=url.pathname.split('/').at(-1)!
+   if(!['synthetic_source_'+nonce,'synthetic_storage_'+nonce].includes(id))throw new Error('Unexpected synthetic provider path.')
+   return Response.json({id,name:'Synthetic configured folder',mimeType:'application/vnd.google-apps.folder',parents:['synthetic_parent_'+nonce],version:'1',trashed:false,capabilities:{canDownload:true,canAddChildren:true}})
+  })
+  const mcp=new Client({name:'google-drive-configure-proof',version:'1'}),mcpTransport=new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{requestInit:{headers:{authorization:'Bearer '+configurator.token}},fetch:async(input,init)=>app.handle(input instanceof Request?input:new Request(input,init))})
+  try{
+   await mcp.connect(mcpTransport)
+   const tools=await mcp.listTools();expect(tools.tools.some(tool=>tool.name==='list_google_drive_accounts')).toBe(true)
+   expect(tools.tools.some(tool=>/oauth|recovery_key/.test(tool.name))).toBe(false)
+   const listed=await mcp.callTool({name:'list_google_drive_accounts',arguments:{}});expect(listed.isError).not.toBe(true)
+   expect(((listed.structuredContent as {data:Array<{id:string}>}).data).some(item=>item.id===combined.id)).toBe(true)
+   for(const kind of ['google_drive','google_drive_storage'] as const){
+    const result=await mcp.callTool({name:'create_connection',arguments:{connection:{name:'Synthetic MCP '+kind+' '+nonce,kind,grantId:combined.id,folderId:(kind==='google_drive'?'synthetic_source_':'synthetic_storage_')+nonce}}})
+    expect(result.isError).not.toBe(true);const id=(result.structuredContent as {data:{id:string}}).data.id;ownedConfiguredIds.add(id)
+    const connection=await db.selectFrom('connections').selectAll().where('id','=',id).executeTakeFirstOrThrow();expect(connection.config.grantId).toBe(combined.id);expect(connection.kind).toBe(kind)
+   }
+  }finally{await mcp.close();provider.mockRestore();access.mockRestore()}
   expect(JSON.stringify((await db.selectFrom('audit_events').selectAll().where('actor','in',actors).execute()))).not.toContain(firstRefresh)
 
   const storageId=randomUUID(),targetId=randomUUID(),folderId='synthetic_folder_'+nonce;ownedStorageIds.add(storageId);ownedTargetIds.add(targetId)
@@ -173,7 +215,9 @@ acceptance('Google Drive OAuth lifecycle and portable import use real isolated P
    if(runIds.length)await db.deleteFrom('events').where('run_id','in',runIds).execute()
    if(artifactIds.length)await db.deleteFrom('artifacts').where('id','in',artifactIds).execute()
    if(runIds.length)await db.deleteFrom('runs').where('id','in',runIds).execute()
-   const connections=[...sourceIds,...ownedStorageIds,...ownedTargetIds];if(connections.length)await db.deleteFrom('connections').where('id','in',connections).execute()
+   const connections=[...sourceIds,...ownedStorageIds,...ownedTargetIds,...ownedConfiguredIds];if(connections.length)await db.deleteFrom('connections').where('id','in',connections).execute()
+   if(ownedAgentTokenIds.size)await db.deleteFrom('agent_tokens').where('id','in',[...ownedAgentTokenIds]).execute()
+   if(ownedAgentIds.size)await db.deleteFrom('agents').where('id','in',[...ownedAgentIds]).execute()
    await sql`DELETE FROM google_drive_oauth_states WHERE actor IN (${sql.join(actors)})`.execute(db)
    await sql`DELETE FROM google_drive_grants WHERE actor IN (${sql.join(actors)})`.execute(db)
    await db.deleteFrom('audit_events').where('actor','in',actors).execute()

@@ -43,9 +43,20 @@ procedure. No Google connection is enabled merely by installing the code.
 
 ## Connect an account and folder
 
-Open **Connections → Google Drive** as the owner. Choose the intended use and press
-the Google authorization button. After the callback, confirm the account grant in
-Steelkeep, name the connection and choose a folder.
+Open **Connections → Add connection → Google Drive** as the owner and connect your
+Google account. One authorization requests `drive.readonly` for capture and recovery,
+plus `drive.file` for app-created backup and restore folders. The callback returns
+to the connection dialog and attaches the authorization once.
+
+After connecting, select **Back up a folder**, **Store backups in Drive**, or both.
+Both creates two clearly named folder connections under the same Google account:
+an existing source folder and a separate new archive folder. Reuse the account when
+adding another connection without authorizing it again. Existing purpose-specific
+authorizations remain usable for their original purpose.
+
+The collapsed recovery options add an empty restore folder or attach an existing
+archive folder. **Connections → Drive recovery** opens the portable archive catalog
+and explicit recovery-key download without occupying the main connections list.
 
 | Purpose | Access | Folder |
 | --- | --- | --- |
@@ -62,7 +73,9 @@ folder must be outside the selected Drive source tree to prevent recursive captu
 Source and storage connections use the ordinary plans, manual jobs and timezone
 schedules. Credentials are sealed in separate OAuth-grant records; reconnect-required
 errors stop operations instead of retrying forever. Only an owner can connect or
-disconnect Google accounts. Existing scoped API/MCP permissions still govern jobs.
+disconnect Google accounts. Configure-scoped API/MCP clients can list connected
+account metadata and reuse an active authorization for folder profiles; credentials
+are never returned. Existing scoped permissions still govern backup and restore jobs.
 
 ## Recover on another server
 
@@ -164,7 +177,19 @@ an accurate privacy policy and disclosure for your own installation and audience
 
 ## Qualification
 
-Implementation and synthetic tests must be checked on the exact source revision.
-Mocked Google responses and local archive cycles do not establish a live Workspace
-OAuth connection or recovery. No production Google account is contacted by default
-tests. Record actual remote test results and any live isolated Drive proof separately.
+The following checks ran on isolated GitHub runners on 23 November 2026:
+
+| Evidence | Result | Scope |
+| --- | --- | --- |
+| [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45205209830), `6eab14c` | Both TypeScript configurations, 119 tests / 1,031 assertions, production build passed | Includes injected Google transport and encrypted archive tests; that run's original UI selector failed and was corrected separately. |
+| PostgreSQL integration in the same run | 1 test / 156 assertions passed | Disposable PostgreSQL 17, OAuth state/claim/refresh/revocation, portable import, corruption and concurrency guards; synthetic Google transport. |
+| [Drive UI acceptance](https://github.com/grootbro/steelkeep/actions/runs/45209048473), `9a8b6b1` | Passed | Desktop/mobile, light/dark, original branding, four connection purposes, one-time claim, catalog/import retry gates and owner controls; Google requests are intercepted. |
+| [Release packaging](https://github.com/grootbro/steelkeep/actions/runs/45209730718), `58b022e` | Passed | Runtime/build inputs matched the qualified UI revision; a 3.9 MB archive with per-file hashes was produced without Docker. |
+
+The existing installation was updated to `58b022e` using the existing image and
+dependencies. Migration 12 and authenticated HTTPS configuration/API/MCP smoke
+checks passed. These checks establish deployment, not a live Google data transfer.
+
+Mocked Google responses and archive cycles do not establish a live Workspace OAuth
+connection or recovery. No production Google account is contacted by default tests.
+Record any live isolated Drive transfer and recovery proof separately.

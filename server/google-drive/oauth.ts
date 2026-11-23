@@ -6,8 +6,8 @@ import {config} from '../config'
 import {AppError,seal,unseal} from '../security'
 import {audit} from '../agents'
 
-export type GoogleDrivePurpose='source'|'restore'|'storage'|'recovery'
-export const googleDriveScopes={source:'https://www.googleapis.com/auth/drive.readonly',restore:'https://www.googleapis.com/auth/drive.file',storage:'https://www.googleapis.com/auth/drive.file',recovery:'https://www.googleapis.com/auth/drive.readonly'} as const
+export type GoogleDrivePurpose='source'|'restore'|'storage'|'recovery'|'account'
+export const googleDriveScopes={source:'https://www.googleapis.com/auth/drive.readonly',restore:'https://www.googleapis.com/auth/drive.file',storage:'https://www.googleapis.com/auth/drive.file',recovery:'https://www.googleapis.com/auth/drive.readonly',account:'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file'} as const
 export type GoogleOAuthConfiguration={clientId:string;clientSecret:string;redirectUri:string}
 type Fetch=(...args:Parameters<typeof globalThis.fetch>)=>ReturnType<typeof globalThis.fetch>
 type Credentials={refreshToken:string;accessToken?:string;expiresAt?:number}
@@ -20,9 +20,14 @@ const invalidState=()=>new AppError('GOOGLE_OAUTH_STATE','This Google authorizat
 const reconnect=()=>new AppError('GOOGLE_RECONNECT_REQUIRED','Google authorization expired or was revoked. Reconnect this account.',409)
 const invalidConfig=()=>new AppError('GOOGLE_OAUTH_CONFIG','Configure a valid Google OAuth web client, private secret file and exact allowed callback origin.',503)
 const publicGrant=(row:GrantRow):GoogleDriveGrant=>({id:row.id,purpose:row.purpose,scopes:row.scopes,revision:row.revision,status:row.status,createdAt:new Date(row.created_at).toISOString(),claimedAt:row.claimed_at?new Date(row.claimed_at).toISOString():null,revokedAt:row.revoked_at?new Date(row.revoked_at).toISOString():null})
-function purpose(value:unknown):GoogleDrivePurpose{if(value!=='source'&&value!=='restore'&&value!=='storage'&&value!=='recovery')throw new AppError('GOOGLE_OAUTH_PURPOSE','Choose Google Drive source, restore, storage or recovery authorization.');return value}
+function purpose(value:unknown):GoogleDrivePurpose{if(value!=='source'&&value!=='restore'&&value!=='storage'&&value!=='recovery'&&value!=='account')throw new AppError('GOOGLE_OAUTH_PURPOSE','Choose Google Drive account, source, restore, storage or recovery authorization.');return value}
 function actor(value:string){if(typeof value!=='string'||value.length<1||value.length>200||/[\r\n\0]/.test(value))throw new AppError('UNAUTHORIZED','An authenticated account is required.',401);return value}
 function grantId(value:string){if(typeof value!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value))throw new AppError('GOOGLE_GRANT_NOT_FOUND','Google authorization not found.',404);return value}
+
+export function googleGrantSupports(grant:Pick<GoogleDriveGrant,'purpose'|'scopes'|'status'>,requestedPurpose:GoogleDrivePurpose){
+ const requested=googleDriveScopes[purpose(requestedPurpose)].split(' '),granted=googleDriveScopes[purpose(grant.purpose)].split(' ')
+ return grant.status==='active'&&(grant.purpose===requestedPurpose||grant.purpose==='account')&&requested.every(scope=>grant.scopes.includes(scope))&&granted.every(scope=>grant.scopes.includes(scope))&&grant.scopes.every(scope=>granted.includes(scope))
+}
 
 export function validateGoogleOAuthConfiguration(value:GoogleOAuthConfiguration,allowedOrigins:readonly string[]):GoogleOAuthConfiguration{
  let url:URL
@@ -59,10 +64,10 @@ async function boundedJson(response:Response):Promise<Record<string,unknown>>{
 }
 function token(value:unknown){return typeof value==='string'&&value.length>=8&&value.length<=8192&&!/[\r\n\0]/.test(value)}
 export function parseGoogleTokens(value:Record<string,unknown>,requestedPurpose:GoogleDrivePurpose,previousRefreshToken?:string,now=Date.now()):Credentials&{accessToken:string;expiresAt:number;scopes:string[]}{
- const required=googleDriveScopes[purpose(requestedPurpose)]
+ const required=googleDriveScopes[purpose(requestedPurpose)].split(' ')
  if(!token(value.access_token)||value.token_type!=='Bearer'||!Number.isSafeInteger(value.expires_in)||Number(value.expires_in)<60||Number(value.expires_in)>86400)throw new AppError('GOOGLE_OAUTH_FAILED','Google did not return a usable access token.',502)
- const scopes=typeof value.scope==='string'?[...new Set(value.scope.split(/\s+/).filter(Boolean))]:previousRefreshToken?[required]:[]
- if(!scopes.includes(required)||scopes.some(scope=>scope!==required))throw new AppError('GOOGLE_SCOPE_MISMATCH','Google did not grant the exact requested Drive access. Use a dedicated OAuth client and authorize again.',409)
+ const scopes=typeof value.scope==='string'?[...new Set(value.scope.split(/\s+/).filter(Boolean))]:previousRefreshToken?required:[]
+ if(!required.every(scope=>scopes.includes(scope))||scopes.some(scope=>!required.includes(scope)))throw new AppError('GOOGLE_SCOPE_MISMATCH','Google did not grant the requested Drive access. Approve the listed permissions and reconnect.',409)
  const refreshToken=value.refresh_token===undefined?previousRefreshToken:value.refresh_token
  if(!token(refreshToken))throw new AppError('GOOGLE_OFFLINE_ACCESS_REQUIRED','Google did not grant offline access. Reconnect and approve background backups.',409)
  return {accessToken:value.access_token as string,refreshToken:refreshToken as string,expiresAt:now+Number(value.expires_in)*1000,scopes}
@@ -83,12 +88,17 @@ export async function migrateGoogleDriveOAuth(db:Kysely<Schema>){
  await sql`CREATE INDEX google_drive_grants_actor_idx ON google_drive_grants(actor,status)`.execute(db)
 }
 
+export async function migrateGoogleDriveOAuthAccount(db:Kysely<Schema>){
+ await sql`ALTER TABLE google_drive_oauth_states DROP CONSTRAINT google_drive_oauth_states_purpose_check,ADD CONSTRAINT google_drive_oauth_states_purpose_check CHECK(purpose IN ('source','restore','storage','recovery','account'))`.execute(db)
+ await sql`ALTER TABLE google_drive_grants DROP CONSTRAINT google_drive_grants_purpose_check,ADD CONSTRAINT google_drive_grants_purpose_check CHECK(purpose IN ('source','restore','storage','recovery','account'))`.execute(db)
+}
+
 export class GoogleDriveOAuth {
  constructor(readonly db:Kysely<Schema>,readonly options:{fetch?:Fetch;configuration?:()=>GoogleOAuthConfiguration|null;encryptionKey?:Buffer}={}){}
  private configuration(){const value=(this.options.configuration??googleOAuthConfiguration)();if(!value)throw new AppError('GOOGLE_OAUTH_NOT_CONFIGURED','The server owner must configure Google OAuth before connecting Drive.',503);return value}
  private seal(value:unknown){return seal(value,this.options.encryptionKey===undefined?undefined:Buffer.from(this.options.encryptionKey))}
  private unseal<T>(value:string){return unseal<T>(value,this.options.encryptionKey===undefined?undefined:Buffer.from(this.options.encryptionKey))}
- status(){const value=(this.options.configuration??googleOAuthConfiguration)();return {configured:!!value,redirectUri:value?.redirectUri??null,sourceScope:googleDriveScopes.source,restoreScope:googleDriveScopes.restore,storageScope:googleDriveScopes.storage,recoveryScope:googleDriveScopes.recovery}}
+ status(){const value=(this.options.configuration??googleOAuthConfiguration)();return {configured:!!value,redirectUri:value?.redirectUri??null,sourceScope:googleDriveScopes.source,restoreScope:googleDriveScopes.restore,storageScope:googleDriveScopes.storage,recoveryScope:googleDriveScopes.recovery,accountScope:googleDriveScopes.account,accountScopes:googleDriveScopes.account.split(' ')}}
  async start(initiator:string,requestedPurpose:GoogleDrivePurpose){
   actor(initiator);purpose(requestedPurpose)
   const authorization=googleAuthorization(this.configuration(),requestedPurpose),expiresAt=new Date(Date.now()+600000)
@@ -127,12 +137,13 @@ export class GoogleDriveOAuth {
   })
  }
  async listGrants(initiator:string){actor(initiator);return(await sql<GrantRow>`SELECT id,actor,purpose,scopes,revision,status,created_at,claimed_at,revoked_at FROM google_drive_grants WHERE actor=${initiator} AND status<>'pending' ORDER BY created_at DESC LIMIT 100`.execute(this.db)).rows.map(publicGrant)}
+ async connectedAccounts(){return(await sql<GrantRow>`SELECT id,purpose,scopes,revision,status,created_at,claimed_at,revoked_at FROM google_drive_grants WHERE status IN ('active','reconnect_required') ORDER BY created_at DESC LIMIT 100`.execute(this.db)).rows.map(publicGrant)}
  async grant(id:string,requestedPurpose?:GoogleDrivePurpose){
   grantId(id)
   const row=(await sql<GrantRow>`SELECT id,actor,purpose,scopes,revision,status,created_at,claimed_at,revoked_at FROM google_drive_grants WHERE id=${id}`.execute(this.db)).rows[0]
   if(!row||row.status==='pending')throw new AppError('GOOGLE_GRANT_NOT_FOUND','Google authorization not found.',404)
   if(row.status!=='active')throw reconnect()
-  if(requestedPurpose!==undefined&&row.purpose!==purpose(requestedPurpose))throw new AppError('GOOGLE_SCOPE_MISMATCH','This Google authorization is for a different operation.',409)
+  if(requestedPurpose!==undefined&&!googleGrantSupports(row,purpose(requestedPurpose)))throw new AppError('GOOGLE_SCOPE_MISMATCH','This Google authorization is for a different operation.',409)
   return publicGrant(row)
  }
  async accessToken(id:string,requestedPurpose:GoogleDrivePurpose,signal?:AbortSignal,forceRefresh=false):Promise<string>{
@@ -141,11 +152,11 @@ export class GoogleDriveOAuth {
   const result=await this.db.transaction().execute(async db=>{
    const row=(await sql<GrantRow>`SELECT * FROM google_drive_grants WHERE id=${id} FOR UPDATE`.execute(db)).rows[0]
    if(!row||row.status!=='active')return {error:reconnect()}
-   if(row.purpose!==requestedPurpose||row.scopes.length!==1||row.scopes[0]!==googleDriveScopes[requestedPurpose])return {error:new AppError('GOOGLE_SCOPE_MISMATCH','This Google authorization is for a different operation.',409)}
+   if(!googleGrantSupports(row,requestedPurpose))return {error:new AppError('GOOGLE_SCOPE_MISMATCH','This Google authorization is for a different operation.',409)}
    const current=this.unseal<Credentials>(row.secret)
    if(!forceRefresh&&token(current.accessToken)&&typeof current.expiresAt==='number'&&current.expiresAt>Date.now()+60000)return {token:current.accessToken as string}
    try{
-    const updated=await requestGoogleTokens(configuration,requestedPurpose,{grant_type:'refresh_token',refresh_token:current.refreshToken},{fetch:this.options.fetch,signal,previousRefreshToken:current.refreshToken})
+    const updated=await requestGoogleTokens(configuration,row.purpose,{grant_type:'refresh_token',refresh_token:current.refreshToken},{fetch:this.options.fetch,signal,previousRefreshToken:current.refreshToken})
     // Grant identity/revision is stable across routine cache and refresh-token rotation.
     await sql`UPDATE google_drive_grants SET secret=${this.seal({refreshToken:updated.refreshToken,accessToken:updated.accessToken,expiresAt:updated.expiresAt})} WHERE id=${id}`.execute(db)
     return {token:updated.accessToken}

@@ -11,8 +11,8 @@ const base = 'http://127.0.0.1:4310'
 const directory = 'output/playwright/google-drive-ui'
 const sourceFolder = 'syntheticSourceFolder12345', archiveFolder = 'syntheticArchiveFolder12345'
 const currentStorage = randomUUID(), previousStorage = randomUUID(), sourceConnection = randomUUID()
-const purposes = ['source', 'storage', 'restore', 'recovery']
-const grants = purposes.map(purpose => ({ id: randomUUID(), purpose, status: 'active', revision: 1, createdAt: '2026-11-23T00:00:00.000Z', claimedAt: '2026-11-23T00:00:00.000Z', revokedAt: null }))
+const purposes = ['account', 'source', 'storage', 'restore', 'recovery']
+const grants = purposes.map(purpose => ({ id: randomUUID(), purpose, scopes: purpose === 'account' ? ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file'] : ['https://www.googleapis.com/auth/' + (['source', 'recovery'].includes(purpose) ? 'drive.readonly' : 'drive.file')], status: 'active', revision: 1, createdAt: '2026-11-23T00:00:00.000Z', claimedAt: '2026-11-23T00:00:00.000Z', revokedAt: null }))
 const results = [], checks = []
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -46,7 +46,7 @@ async function seed() {
       (SELECT count(*)::int FROM owner_account) AS owners,
       (SELECT count(*)::int FROM runs) AS runs,
       (SELECT count(*)::int FROM artifacts) AS artifacts`)).rows[0]
-    assert.deepEqual(row, { database: 'steelkeep_drive_ci', actor: 'steelkeep_drive_ci', schema: 12, connections: 0, owners: 0, runs: 0, artifacts: 0 }, 'Run only after the isolated integration fixture has cleaned its own records.')
+    assert.deepEqual(row, { database: 'steelkeep_drive_ci', actor: 'steelkeep_drive_ci', schema: 13, connections: 0, owners: 0, runs: 0, artifacts: 0 }, 'Run only after the isolated integration fixture has cleaned its own records.')
     const rows = [
       { id: sourceConnection, name: 'Synthetic work documents', kind: 'google_drive', folder: sourceFolder, purpose: 'source' },
       { id: currentStorage, name: 'Synthetic Drive archive storage', kind: 'google_drive_storage', folder: archiveFolder, purpose: 'storage' },
@@ -94,7 +94,7 @@ async function startServer() {
 }
 
 async function installSyntheticGoogle(context) {
-  const observed = { connections: [], claims: [], imports: [], catalog: [], authorizations: [], googleNavigation: [], keyDownloads: 0, unexpectedWrites: [], ownerAccess: true }
+  const observed = { connections: [], claims: [], imports: [], catalog: [], authorizations: [], googleNavigation: [], keyDownloads: 0, unexpectedWrites: [], ownerAccess: true, rejectStorageOnce: false }
   const archive = { fileId: 'syntheticArchiveFile12345', name: 'Synthetic database snapshot', size: '4096', sha256: 'a'.repeat(64), engine: 'postgres', recoveryId: 'syntheticRecoveryFile12345', portable: true }
   await context.route('https://accounts.google.com/**', async route => {
     observed.googleNavigation.push(route.request().url())
@@ -104,6 +104,7 @@ async function installSyntheticGoogle(context) {
   await context.route(base + '/api/v1/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method()
     const fulfill = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
+    if (path === '/api/v1/me' && method === 'GET') { await delay(250); return route.continue() }
     if (path === '/api/v1/google-drive/status') return fulfill({ configured: true, redirectUri: base + '/api/v1/google-drive/oauth/callback', sourceScope: 'https://www.googleapis.com/auth/drive.readonly', restoreScope: 'https://www.googleapis.com/auth/drive.file', ownerAccess: observed.ownerAccess })
     if (path === '/api/v1/google-drive/grants') return fulfill(grants)
     if (path === '/api/v1/google-drive/oauth/claim' && method === 'POST') { observed.claims.push(request.postDataJSON()); return fulfill(grants[0]) }
@@ -124,7 +125,7 @@ async function installSyntheticGoogle(context) {
     }
     if (path === '/api/v1/connections' && method === 'POST') {
       const body = request.postDataJSON()
-      if (body.kind === 'google_drive' || body.kind === 'google_drive_storage') { observed.connections.push(body); return fulfill({ id: randomUUID() }) }
+      if (body.kind === 'google_drive' || body.kind === 'google_drive_storage') { observed.connections.push(body); if (observed.rejectStorageOnce && body.kind === 'google_drive_storage') { observed.rejectStorageOnce = false; return fulfill({ error: { code: 'INVALID_INPUT', message: 'Synthetic storage request was rejected before creating a folder.' } }, 422) } return fulfill({ id: randomUUID() }) }
     }
     if (path.startsWith('/api/v1/google-drive/') || !['GET', 'HEAD'].includes(method)) {
       observed.unexpectedWrites.push({ path, method })
@@ -137,7 +138,7 @@ async function installSyntheticGoogle(context) {
 
 async function renderReady(page, theme, errors, assets) {
   await page.locator('.google-drive-panel').waitFor()
-  await page.waitForFunction(theme => document.querySelector('.app')?.getAttribute('data-theme') === theme && !document.querySelector('.google-drive-purpose select')?.disabled, theme)
+  await page.waitForFunction(theme => document.querySelector('.app')?.getAttribute('data-theme') === theme && document.querySelector('.google-drive-authorize strong')?.textContent === 'Connected Google account', theme)
   await page.evaluate(() => document.fonts.ready)
   await page.waitForLoadState('networkidle')
   const layout = await page.evaluate(() => ({ width: window.innerWidth, documentWidth: document.documentElement.scrollWidth, font: getComputedStyle(document.body).fontFamily, interReady: document.fonts.check('14px "Inter Variable"'), visibleBrand: [...document.querySelectorAll('[aria-label="steelkeep"]')].some(element => element.getBoundingClientRect().width > 0) }))
@@ -149,29 +150,64 @@ async function renderReady(page, theme, errors, assets) {
   return layout
 }
 
+async function openDrive(page) {
+  await page.locator('.page-header').getByRole('button', { name: 'Add connection', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add connection', exact: true })
+  await dialog.getByLabel('Connection type', { exact: true }).selectOption('google_drive')
+  await dialog.getByText('Connected Google account', { exact: true }).waitFor()
+  return dialog
+}
+
 async function workflows(page, observed) {
-  const panel = page.locator('.google-drive-panel'), picker = panel.locator('.google-drive-purpose select')
-  assert.equal(observed.authorizations.length, 0, 'Loading the panel cannot start OAuth automatically.')
-  assert.equal(await panel.getByRole('link', { name: 'Save recovery key' }).getAttribute('href'), '/api/v1/google-drive/recovery-key')
+  let dialog = page.getByRole('dialog', { name: 'Add connection', exact: true })
+  assert.equal(observed.authorizations.length, 0, 'Opening Add Connection cannot start OAuth automatically.')
   const flows = [
-    { purpose: 'source', name: 'Synthetic source selection', folder: `https://drive.google.com/drive/u/0/folders/${sourceFolder}?usp=sharing`, button: 'Save connection', kind: 'google_drive', expectedFolder: sourceFolder },
-    { purpose: 'storage', name: 'Synthetic new archive storage', button: 'Create backup storage', kind: 'google_drive_storage', expectedFolder: 'new' },
-    { purpose: 'restore', name: 'Synthetic empty recovery destination', button: 'Create recovery folder', kind: 'google_drive', expectedFolder: 'new', restoreTarget: true },
-    { purpose: 'recovery', name: 'Synthetic existing archive selection', folder: `https://drive.google.com/drive/folders/${archiveFolder}`, button: 'Save connection', kind: 'google_drive_storage', expectedFolder: archiveFolder, readOnlyRecovery: true }
+    { purpose: 'source', name: 'Synthetic source selection', folder: `https://drive.google.com/drive/u/0/folders/${sourceFolder}?usp=sharing`, kind: 'google_drive', expectedFolder: sourceFolder },
+    { purpose: 'storage', name: 'Synthetic new archive storage', kind: 'google_drive_storage', expectedFolder: 'new' },
+    { purpose: 'restore', name: 'Synthetic empty recovery destination', kind: 'google_drive', expectedFolder: 'new', restoreTarget: true },
+    { purpose: 'recovery', name: 'Synthetic existing archive selection', folder: `https://drive.google.com/drive/folders/${archiveFolder}`, kind: 'google_drive_storage', expectedFolder: archiveFolder, readOnlyRecovery: true }
   ]
-  for (const flow of flows) {
-    await picker.selectOption(flow.purpose)
-    await panel.locator('.google-drive-fields > label:not(.google-drive-folder) > input').fill(flow.name)
-    if (flow.folder) await panel.locator('.google-drive-folder input').fill(flow.folder)
-    await panel.getByRole('button', { name: flow.button, exact: true }).click()
-    await panel.getByRole('link', { name: 'View connection', exact: true }).waitFor()
+  for (const [index, flow] of flows.entries()) {
+    if (index) dialog = await openDrive(page)
+    if (flow.purpose === 'storage') {
+      await dialog.getByRole('checkbox', { name: /Back up a folder/ }).uncheck()
+      await dialog.getByRole('checkbox', { name: /Store backups in Drive/ }).check()
+    } else if (['restore', 'recovery'].includes(flow.purpose)) {
+      await dialog.locator('.google-drive-advanced > summary').click()
+      await dialog.getByLabel('Recovery connection role', { exact: true }).selectOption(flow.purpose)
+    }
+    await dialog.getByLabel('Connection name', { exact: true }).fill(flow.name)
+    if (flow.folder) await dialog.locator('.google-drive-folder input').fill(flow.folder)
+    await dialog.getByRole('button', { name: 'Add connection', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
     const body = observed.connections.at(-1)
-    assert.ok(body.name === flow.name && body.kind === flow.kind && body.folderId === flow.expectedFolder && body.grantId === grants.find(grant => grant.purpose === flow.purpose).id, 'The native connection form must send its selected purpose, grant and canonical folder.')
+    assert.ok(body.name === flow.name && body.kind === flow.kind && body.folderId === flow.expectedFolder && body.grantId === grants[0].id, 'The common connection form must reuse one account grant with the selected role and canonical folder.')
     assert.equal(body.restoreTarget === true, flow.restoreTarget === true)
     assert.equal(body.readOnlyRecovery === true, flow.readOnlyRecovery === true)
     assert.ok(!('password' in body) && !('accessToken' in body) && !('refreshToken' in body), 'Connection forms cannot submit raw Google credentials.')
-    checks.push(`native-${flow.purpose}-connection-form`)
+    checks.push(`unified-${flow.purpose}-connection-form`)
   }
+  dialog = await openDrive(page)
+  await dialog.getByLabel('Connection name', { exact: true }).fill('Synthetic dual role')
+  await dialog.getByRole('checkbox', { name: /Store backups in Drive/ }).check()
+  await dialog.getByLabel('Source folder', { exact: true }).fill(sourceFolder)
+  observed.rejectStorageOnce = true
+  await dialog.getByRole('button', { name: 'Add connections', exact: true }).click()
+  await dialog.getByText('Synthetic storage request was rejected before creating a folder.', { exact: true }).waitFor()
+  assert.ok(await dialog.getByLabel('Connection name', { exact: true }).isDisabled(), 'The first saved role freezes the original selection.')
+  await dialog.getByRole('button', { name: 'Continue', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden' })
+  const dual = observed.connections.slice(-3)
+  assert.equal(dual.filter(body => body.kind === 'google_drive').length, 1, 'Finishing a partially saved selection cannot create the source again.')
+  dual.splice(1, 1)
+  assert.deepEqual(dual.map(body => [body.kind, body.folderId, body.grantId]), [['google_drive', sourceFolder, grants[0].id], ['google_drive_storage', 'new', grants[0].id]])
+  assert.equal(observed.authorizations.length, 0, 'Reusing a connected account for both roles cannot start OAuth again.')
+  checks.push('one-account-both-typed-connections-partial-save-no-duplicate-source-or-oauth')
+
+  await page.locator('.page-header').getByRole('button', { name: 'Drive recovery', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: 'Google Drive recovery', exact: true })
+  await panel.getByRole('link', { name: 'Save recovery key' }).waitFor()
+  assert.equal(await panel.getByRole('link', { name: 'Save recovery key' }).getAttribute('href'), '/api/v1/google-drive/recovery-key')
   await panel.locator('.google-drive-recovery > summary').click()
   await panel.locator('.google-drive-catalog-controls select').selectOption(previousStorage)
   await panel.getByRole('button', { name: 'Browse archives', exact: true }).click()
@@ -189,44 +225,61 @@ async function workflows(page, observed) {
   await panel.getByText('The import result is not confirmed.', { exact: false }).waitFor()
   assert.equal(observed.imports.length, 1)
   await panel.getByRole('button', { name: 'Refresh Google Drive connections', exact: true }).click()
-  await page.waitForFunction(() => !document.querySelector('.google-drive-panel [aria-label="Refresh Google Drive connections"]')?.disabled)
-  assert.equal(observed.imports.length, 1, 'Reading updated panel data must not automatically repeat an import.')
+  await page.waitForFunction(() => !document.querySelector('.google-drive-panel .google-drive-refresh')?.disabled)
+  assert.equal(observed.imports.length, 1, 'Reading updated Drive data must not automatically repeat an import.')
   await panel.getByRole('button', { name: 'Recover import result', exact: true }).click()
   await panel.getByRole('link', { name: 'Open snapshots', exact: true }).waitFor()
   assert.equal(observed.imports.length, 2)
   assert.deepEqual(observed.imports[1], observed.imports[0], 'Unknown import recovery must retain the original request key and exact selection.')
   checks.push('uncertain-import-explicit-same-key-recovery-no-auto-replay')
+  await panel.getByRole('button', { name: 'Close dialog', exact: true }).click()
+
+  await page.goto(base + '/plans', { waitUntil: 'domcontentloaded' })
+  await page.locator('.page-header').getByRole('button', { name: 'Create plan', exact: true }).click()
+  const plan = page.getByRole('dialog', { name: 'Create backup plan', exact: true })
+  await plan.getByLabel('Backup source', { exact: true }).selectOption(sourceConnection)
+  await plan.getByLabel('Backup storage', { exact: true }).selectOption(currentStorage)
+  await plan.getByText('Google Drive folder:', { exact: false }).waitFor()
+  assert.ok(!(await plan.innerText()).includes('undefined'))
+  assert.equal(await plan.getByLabel('Backup storage', { exact: true }).locator(`option[value="${previousStorage}"]`).count(), 0, 'Read-only recovery storage must not be selectable for new backups.')
+  await plan.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  checks.push('provider-neutral-backup-plan-labels-and-readonly-storage-exclusion')
+
   const claimTicket = 'gdc_' + 'a'.repeat(64)
-  // A real OAuth callback returns from another document, rather than changing only this page's hash.
   await page.goto(base + '/overview', { waitUntil: 'domcontentloaded' })
   await page.goto(base + '/connections#google-drive=' + claimTicket)
-  await panel.getByText('Google authorization connected.', { exact: false }).waitFor()
+  dialog = page.getByRole('dialog', { name: 'Add connection', exact: true })
+  await dialog.getByText('Google account connected.', { exact: false }).waitFor()
   assert.ok(!new URL(page.url()).hash.includes('google-drive'), 'OAuth claim capability must be removed from the browser URL.')
   assert.equal(observed.claims.length, 1)
   assert.ok(observed.claims[0].ticket === claimTicket, 'Only the expected synthetic claim is redeemed.')
   await page.reload()
-  await picker.waitFor();await page.waitForFunction(() => !document.querySelector('.google-drive-purpose select')?.disabled)
+  await page.locator('.page-header').getByRole('button', { name: 'Add connection', exact: true }).waitFor()
   assert.equal(observed.claims.length, 1, 'Reloading the clean callback URL cannot redeem the claim again.')
   assert.equal(observed.keyDownloads, 0, 'Recovery-key export must remain an explicit user action.')
-  checks.push('single-oauth-claim-scrubbed-fragment-and-no-key-auto-export')
+  checks.push('oauth-return-opens-unified-modal-single-claim-and-scrubbed-fragment')
+
   observed.ownerAccess = false
-  await panel.getByRole('button', { name: 'Refresh Google Drive connections', exact: true }).click()
-  await panel.getByText('Sign in with the owner account', { exact: false }).waitFor()
-  assert.equal(await panel.getByRole('link', { name: 'Save recovery key' }).count(), 0, 'A nonowner status must hide recovery-key export.')
-  assert.equal(await panel.getByRole('button', { name: 'Connect with Google', exact: true }).count(), 0)
+  await page.locator('.page-header').getByRole('button', { name: 'Add connection', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: 'Add connection', exact: true })
+  await dialog.getByLabel('Connection type', { exact: true }).selectOption('google_drive')
+  await dialog.getByText('Sign in with the owner account', { exact: false }).waitFor()
+  assert.equal(await dialog.getByRole('link', { name: 'Save recovery key' }).count(), 0)
+  assert.equal(await dialog.getByRole('button', { name: 'Connect with Google', exact: true }).count(), 0)
   observed.ownerAccess = true
-  await panel.getByRole('button', { name: 'Refresh Google Drive connections', exact: true }).click()
-  await picker.waitFor();await page.waitForFunction(() => !document.querySelector('.google-drive-purpose select')?.disabled)
+  await dialog.getByRole('button', { name: 'Refresh Google Drive connections', exact: true }).click()
+  await dialog.getByText('Connected Google account', { exact: true }).waitFor()
   checks.push('nonowner-status-hides-connect-and-recovery-key-controls')
   const navigated = page.waitForURL('https://accounts.google.com/**')
-  await panel.getByRole('button', { name: 'Connect with Google', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Connect another account', exact: true }).click()
   await navigated
   await page.getByRole('heading', { name: 'Synthetic Google approval boundary', exact: true }).waitFor()
   assert.equal(observed.authorizations.length, 1)
+  assert.deepEqual(observed.authorizations[0], { purpose: 'account' })
   assert.equal(observed.googleNavigation.length, 1)
   assert.equal(new URL(observed.googleNavigation[0]).searchParams.get('redirect_uri'), base + '/api/v1/google-drive/oauth/callback')
   assert.equal(observed.unexpectedWrites.length, 0)
-  checks.push('explicit-oauth-start-to-synthetic-google-boundary')
+  checks.push('explicit-combined-account-oauth-to-synthetic-google-boundary')
 }
 
 async function main() {
@@ -247,6 +300,9 @@ async function main() {
         page.on('pageerror', error => errors.push(error.message))
         page.on('response', response => { const url = response.url();if (/\/(?:assets|brandassets)\//.test(url)) assets.push({ url, status: response.status() }) })
         await page.goto('/connections', { waitUntil: 'domcontentloaded' })
+        await page.locator('.page-header').getByRole('button', { name: 'Add connection', exact: true }).waitFor()
+        assert.equal(await page.locator('.google-drive-panel').count(), 0, 'Drive must not occupy a detached always-visible panel.')
+        await openDrive(page)
         const layout = await renderReady(page, theme, errors, assets)
         await page.screenshot({ path: `${directory}/${name}.png` })
         if (!mobile && theme === 'light') await workflows(page, observed)

@@ -54,3 +54,26 @@
  .google-drive-setup{padding-inline:16px}
  .google-drive-paging{justify-content:space-between}
 }
+/* Drive follows the same modal, fields and actions as database connections. */
+.google-drive-panel{margin-top:0}
+.google-drive-panel>.google-drive-error,.google-drive-panel>.google-drive-notice{margin:0 0 16px}
+.google-drive-authorize{padding:0 0 18px;border-top:0;gap:14px;align-items:flex-start}
+.google-drive-authorize>div{min-width:0}
+.google-drive-authorize>button{flex-shrink:0}
+.google-drive-form{gap:18px}
+.google-drive-roles{display:flex;flex-direction:column;gap:13px}
+.google-drive-roles .checkbox{align-items:flex-start}
+.google-drive-roles strong{display:block;font-size:12px;font-weight:600}
+.google-drive-roles small{display:block;color:var(--muted);font-size:11px;line-height:1.6;margin-top:3px}
+.google-drive-advanced{border-top:1px solid var(--line);padding-top:14px}
+.google-drive-advanced summary{font-size:12px;color:var(--muted);cursor:pointer}
+.google-drive-advanced>label{margin-top:14px}
+.google-drive-key{margin-top:0;padding-top:0;border-top:0;flex-wrap:wrap}
+.google-drive-key>a{margin-left:28px}
+.google-drive-recovery{margin-top:20px}
+.google-drive-recovery>summary{font-size:13px}
+.google-drive-setup{padding:0}
+.google-drive-refresh{margin-top:18px}
+.google-drive-warning>button{display:block;margin-top:10px}
+.google-drive-form .form-bottom{gap:12px;flex-wrap:wrap}
+@media(max-width:680px){.google-drive-panel{margin-top:0}.google-drive-panel>.google-drive-error,.google-drive-panel>.google-drive-notice{margin-inline:0}.google-drive-authorize{gap:12px}.google-drive-key>a{margin-left:28px}.google-drive-setup{padding-inline:0}}

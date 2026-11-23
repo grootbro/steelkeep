@@ -1,4 +1,4 @@
-import {migrateGoogleDriveOAuth} from './google-drive/oauth'
+import {migrateGoogleDriveOAuth,migrateGoogleDriveOAuthAccount} from './google-drive/oauth'
 import { sql } from 'kysely'
 import { connectDb } from './db'
 import {migrateOwnerAuth} from './owner-auth'
@@ -132,6 +132,10 @@ try {
       await sql`ALTER TABLE connections ADD CONSTRAINT connections_kind_check CHECK(kind IN ('postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql','s3','google_drive','google_drive_storage'))`.execute(trx)
       await migrateGoogleDriveOAuth(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(12)`.execute(trx)
+    }
+    if(!versions.has(13)){
+      await migrateGoogleDriveOAuthAccount(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(13)`.execute(trx)
     }
   })
   console.log('Steelkeep metadata schema ready')

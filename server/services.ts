@@ -20,7 +20,7 @@ import {resourceKey,sourceAdmissionKey,sourceBlockMatches} from './resources'
 import {sourceBlocked} from './source-locks'
 import {probeArtifactAvailability,availabilityStates,type Availability} from './artifact-availability'
 import {AgentServices,audit} from './agents'
-import {authenticateRequest} from './auth'
+import {authenticateRequest,authorize,type Principal} from './auth'
 import {RetentionServices,retainedPlanDto} from './retention'
 import {NotificationServices} from './notifications'
 import {ConnectionHistoryServices} from './connection-history'
@@ -126,13 +126,13 @@ export class Services {
   const row=await this.db.selectFrom('connections').selectAll().where('id','=',validId(id)).executeTakeFirst()
   if(!row)throw new AppError('NOT_FOUND','Connection not found.',404);return row
  }
+ googleDriveAccounts(principal:Principal){authorize(principal,'configure');return new GoogleDriveOAuth(this.db).connectedAccounts()}
  async createConnection(input:ConnectionInput,actor='installation-owner'){
   const id=randomUUID();let safe:SourceConfig|StorageConfig|Record<string,unknown>,secret:DbSecret|S3Secret|Record<string,never>
   if(!input.name.trim())throw new AppError('INVALID_CONNECTION','Enter a connection name.')
   if(input.kind==='google_drive'||input.kind==='google_drive_storage'){
    const restoreTarget=input.kind==='google_drive'&&input.restoreTarget===true,purpose=input.kind==='google_drive_storage'?(input.readOnlyRecovery?'recovery':'storage'):restoreTarget?'restore':'source'
-   const oauth=new GoogleDriveOAuth(this.db),grants=await oauth.listGrants(actor),grant=grants.find(row=>row.id===input.grantId&&row.purpose===purpose&&row.status==='active')
-   if(!grant)throw new AppError('GOOGLE_GRANT_REQUIRED','Connect Google with the matching access before adding this folder.',409)
+   const oauth=new GoogleDriveOAuth(this.db),grant=await oauth.grant(input.grantId,purpose)
    const initial={grantId:grant.id,grantRevision:grant.revision,grantPurpose:purpose,readOnly:purpose==='recovery',restoreTarget},client=driveClient(this.db,{id,kind:input.kind,config:initial,secret:''},AbortSignal.timeout(30000))
    let folderId=input.folderId
    if(folderId==='new'){
