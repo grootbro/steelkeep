@@ -40,7 +40,8 @@ export async function inspectRestore(services:Services,artifactId:string,targetI
   const blocks=await services.db.selectFrom('target_blocks').innerJoin('connections','connections.id','target_blocks.target_id')
     .select(['target_blocks.run_id','connections.kind','connections.config']).execute()
   if(blocks.some(b=>resourceKey(b)===resourceKey(target)&&b.run_id!==ownRunId))throw new AppError('TARGET_BLOCKED','This target or an alias is reserved by another restore. Reconcile its outcome before another operation.',409)
-  const session=createBackupAdapter(target.kind,{config,secret:unseal<Record<string,unknown>>(target.secret),signal:AbortSignal.timeout(30000)},services.db)
+  // OAuth refresh/revocation commits independently of the locked metadata review.
+  const session=createBackupAdapter(target.kind,{config,secret:unseal<Record<string,unknown>>(target.secret),signal:AbortSignal.timeout(30000)},services.oauthDb)
   try{
     const identity=await session.connect()
     if(target.kind!=='google_drive')assertProtectedDatabase(identity.database)
