@@ -67,13 +67,14 @@ test('Google callback accepts bounded response metadata and verifies its optiona
 })
 
 test('actual public callback route handles Google iss/hd/error metadata without raw validation JSON',async()=>{
- const directory=await mkdtemp(join(tmpdir(),'steelkeep-google-callback-')),secretPath=join(directory,'client-secret')
- const settings=['STEELKEEP_GOOGLE_CLIENT_ID','STEELKEEP_GOOGLE_CLIENT_SECRET_FILE','STEELKEEP_GOOGLE_REDIRECT_URI','STEELKEEP_ALLOWED_ORIGINS','STEELKEEP_PUBLIC_HOSTS','STEELKEEP_SCOPED_TOKENS_FILE'] as const
+ const directory=await mkdtemp(join(tmpdir(),'steelkeep-google-callback-')),secretPath=join(directory,'client-secret'),keyPath=join(directory,'metadata-key')
+ const settings=['STEELKEEP_GOOGLE_CLIENT_ID','STEELKEEP_GOOGLE_CLIENT_SECRET_FILE','STEELKEEP_GOOGLE_REDIRECT_URI','STEELKEEP_ALLOWED_ORIGINS','STEELKEEP_PUBLIC_HOSTS','STEELKEEP_SCOPED_TOKENS_FILE','STEELKEEP_KEY_FILE'] as const
  const previous=Object.fromEntries(settings.map(name=>[name,process.env[name]]))
  const ticket='gdc_'+'a'.repeat(64),calls:Array<{state:string;code?:string;error?:string}>=[]
  const callback=spyOn(GoogleDriveOAuth.prototype,'completeCallback').mockImplementation(async input=>{calls.push(input);if(input.error)throw new AppError('GOOGLE_OAUTH_DENIED','Synthetic denial.');return {claimTicket:ticket,expiresAt:new Date(Date.now()+300000).toISOString()}})
  try{
   await writeFile(secretPath,configuration.clientSecret,{mode:0o600})
+  await writeFile(keyPath,Buffer.alloc(32,7),{mode:0o600});process.env.STEELKEEP_KEY_FILE=keyPath
   process.env.STEELKEEP_GOOGLE_CLIENT_ID=configuration.clientId;process.env.STEELKEEP_GOOGLE_CLIENT_SECRET_FILE=secretPath;process.env.STEELKEEP_GOOGLE_REDIRECT_URI=configuration.redirectUri;process.env.STEELKEEP_ALLOWED_ORIGINS='https://backup.example.test';process.env.STEELKEEP_PUBLIC_HOSTS='backup.example.test';delete process.env.STEELKEEP_SCOPED_TOKENS_FILE
   const db=new Proxy({},{get(){throw new Error('The callback route must not query owner sessions.')}}) as Kysely<Schema>
   const app=createApp(new Services(db))
