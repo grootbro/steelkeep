@@ -45,8 +45,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://steelkeep_drive_ci:synthetic-drive-ci-only@127.0.0.1:5432/steelkeep_drive_ci
       STEELKEEP_GOOGLE_DRIVE_ACCEPTANCE: synthetic-ci
-      STEELKEEP_KEY_FILE: ${{ runner.temp }}/drive-ci-key
-      STEELKEEP_TOKEN_FILE: ${{ runner.temp }}/drive-ci-token
+      STEELKEEP_KEY_FILE: /tmp/steelkeep-drive-ci/key
+      STEELKEEP_TOKEN_FILE: /tmp/steelkeep-drive-ci/token
       STEELKEEP_ALLOWED_HOSTS: 127.0.0.1,localhost
       STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4310
     steps:
@@ -60,6 +60,7 @@ jobs:
       - name: Create disposable fixture keys
         run: |
           umask 077
+          mkdir -m 700 /tmp/steelkeep-drive-ci
           head -c 32 /dev/urandom > "$STEELKEEP_KEY_FILE"
           openssl rand -hex 32 > "$STEELKEEP_TOKEN_FILE"
       - run: bun server/migrate.ts
