@@ -1,3 +1,4 @@
+import {migrateGoogleDriveOAuth} from './google-drive/oauth'
 import { sql } from 'kysely'
 import { connectDb } from './db'
 import {migrateOwnerAuth} from './owner-auth'
@@ -125,6 +126,12 @@ try {
       await sql`CREATE TABLE artifact_deletion_reviews(id uuid PRIMARY KEY,actor text NOT NULL,artifact_ids uuid[] NOT NULL CHECK(cardinality(artifact_ids) BETWEEN 1 AND 100),fingerprint text NOT NULL,preview jsonb NOT NULL,expires_at timestamptz NOT NULL,idempotency_key text UNIQUE,response jsonb,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),CHECK((idempotency_key IS NULL)=(response IS NULL)))`.execute(trx)
       await sql`ALTER TABLE retention_jobs ALTER COLUMN plan_id DROP NOT NULL,ADD COLUMN kind text NOT NULL DEFAULT 'policy',ADD COLUMN manual_review_id uuid REFERENCES artifact_deletion_reviews,ADD COLUMN manual_fingerprint text,ADD CONSTRAINT retention_jobs_authorization CHECK((kind='policy' AND plan_id IS NOT NULL AND manual_review_id IS NULL AND manual_fingerprint IS NULL) OR(kind='manual' AND manual_review_id IS NOT NULL AND manual_fingerprint IS NOT NULL AND max_attempts=1))`.execute(trx)
       await sql`INSERT INTO steelkeep_migrations(version) VALUES(11)`.execute(trx)
+    }
+    if(!versions.has(12)){
+      await sql`ALTER TABLE connections DROP CONSTRAINT IF EXISTS connections_kind_check`.execute(trx)
+      await sql`ALTER TABLE connections ADD CONSTRAINT connections_kind_check CHECK(kind IN ('postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql','s3','google_drive','google_drive_storage'))`.execute(trx)
+      await migrateGoogleDriveOAuth(trx)
+      await sql`INSERT INTO steelkeep_migrations(version) VALUES(12)`.execute(trx)
     }
   })
   console.log('Steelkeep metadata schema ready')

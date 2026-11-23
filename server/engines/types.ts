@@ -1,5 +1,6 @@
+import type {SourceKind} from '../../shared/connections'
 export type Engine='postgres'|'mysql'|'mariadb'|'mongodb'|'sqlite'|'redis'|'clickhouse'|'mssql'
-export type Identity={engine:Engine;database:string;serverVersion:string;binding?:string}
+export type Identity={engine:SourceKind;database:string;serverVersion:string;binding?:string}
 export type Manifest=Identity&{format:1;objects:Record<string,unknown>;data:Record<string,unknown>;sequences:Record<string,unknown>}
 export type EnginePhase=(phase:string,message:string)=>Promise<void>
 export type ValidationComparison={passed:boolean;checks:{schema:boolean;data:boolean;sequences:boolean};tableCount:number;method:string;note:string}
@@ -11,7 +12,7 @@ export type SourceLockHooks={
 }
 export type AdapterOptions={config:Record<string,unknown>;secret:Record<string,unknown>;signal:AbortSignal;lockHooks?:SourceLockHooks;checkpoint?:()=>Promise<void>}
 export interface EngineAdapter {
-  readonly engine:Engine
+  readonly engine:SourceKind
   readonly archiveExtension:string
   readonly failureSignal:AbortSignal
   connect():Promise<Identity>

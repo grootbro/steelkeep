@@ -9,7 +9,7 @@ import {safeRun} from './services'
 
 const common={limit:z.coerce.number().int().min(1).max(100).default(30),order:z.enum(['newest','oldest']).default('newest'),cursor:z.string().min(1).max(4096).optional(),id:z.uuid().optional(),sourceId:z.uuid().optional(),storageId:z.uuid().optional(),from:z.iso.datetime({offset:true}).optional(),until:z.iso.datetime({offset:true}).optional(),search:z.string().trim().max(100).optional()}
 export const jobHistoryInput=z.strictObject({...common,type:z.enum(['backup','restore']).optional(),status:z.enum(['queued','running','cancelling','succeeded','failed','cancelled','interrupted']).optional(),targetId:z.uuid().optional(),planId:z.uuid().optional()})
-export const snapshotHistoryInput=z.strictObject({...common,engine:z.enum(engineProfiles.map(profile=>profile.kind)).optional(),availability:z.enum(['present','missing','changed','unknown']).optional(),deletionState:z.enum(['active','queued','deleting','held','deleted']).optional()})
+export const snapshotHistoryInput=z.strictObject({...common,engine:z.enum([...engineProfiles.map(profile=>profile.kind),'google_drive']).optional(),availability:z.enum(['present','missing','changed','unknown']).optional(),deletionState:z.enum(['active','queued','deleting','held','deleted']).optional()})
 type HistoryInput=z.infer<typeof jobHistoryInput>|z.infer<typeof snapshotHistoryInput>
 type Anchor={createdAt:string;id:string}
 const anchorSchema=z.strictObject({createdAt:z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/),id:z.uuid()})

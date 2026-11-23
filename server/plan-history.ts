@@ -8,7 +8,7 @@ import {retainedPlanDto} from './retention'
 import {upcomingOccurrences} from './services'
 
 export const planOrders=['newest','oldest','name_asc','name_desc','next_due'] as const
-export const planEngineKinds=['postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql'] as const
+export const planEngineKinds=['postgres','mysql','mariadb','mongodb','sqlite','redis','clickhouse','mssql','google_drive'] as const
 export const planHistoryInput=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(30),cursor:z.string().min(1).max(4096).optional(),order:z.enum(planOrders).default('newest'),id:z.uuid().optional(),sourceId:z.uuid().optional(),storageId:z.uuid().optional(),kind:z.enum(planEngineKinds).optional(),status:z.enum(['enabled','paused']).optional(),schedule:z.enum(['scheduled','manual']).optional(),retentionMode:z.enum(['keep_all','days','gfs']).optional(),search:z.string().trim().max(100).optional()})
 type Input=z.infer<typeof planHistoryInput>
 type Anchor={id:string;createdAt:string;name:string;nextDue:string|null}
@@ -55,7 +55,7 @@ export class PlanHistoryServices{
    else page=page.orderBy(byName?named:'p.created_at',direction)
    const rows=await page.orderBy('p.id',direction).limit(input.limit+1).execute(),items=rows.slice(0,input.limit),last=items.at(-1)
    return {items:items.map(({_cursor_created_at:_,_cursor_name:__,_cursor_next_due:___,...row})=>{
-    if(row.source_kind==='s3')throw new AppError('INVALID_PLAN_SOURCE','This plan does not reference a supported database source.',409)
+    if(row.source_kind==='s3'||row.source_kind==='google_drive_storage')throw new AppError('INVALID_PLAN_SOURCE','This plan does not reference a supported database source.',409)
     return {...retainedPlanDto(row),source_name:row.source_name,storage_name:row.storage_name,source_kind:row.source_kind,upcoming:row.enabled?upcomingOccurrences(row.cron,row.timezone,now):[],missed_policy:'skip' as const,overlap_policy:'skip' as const}
    }),nextCursor:rows.length>input.limit&&last?planCursor(input,{id:last.id,createdAt:last._cursor_created_at,name:last._cursor_name,nextDue:last._cursor_next_due},key):null,total:count.n,limit:input.limit,order:input.order,summary:{...summary,scope:'all-recorded-plans' as const}}
   })

@@ -29,3 +29,38 @@ jobs:
       - run: bun run typecheck:acceptance
       - run: bun run test
       - run: bun run build
+
+  google-drive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: steelkeep_drive_ci
+          POSTGRES_PASSWORD: synthetic-drive-ci-only
+          POSTGRES_DB: steelkeep_drive_ci
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U steelkeep_drive_ci -d steelkeep_drive_ci" --health-interval 3s --health-timeout 3s --health-retries 30
+    env:
+      DATABASE_URL: postgresql://steelkeep_drive_ci:synthetic-drive-ci-only@127.0.0.1:5432/steelkeep_drive_ci
+      STEELKEEP_GOOGLE_DRIVE_ACCEPTANCE: synthetic-ci
+      STEELKEEP_KEY_FILE: ${{ runner.temp }}/drive-ci-key
+      STEELKEEP_TOKEN_FILE: ${{ runner.temp }}/drive-ci-token
+      STEELKEEP_ALLOWED_HOSTS: 127.0.0.1,localhost
+      STEELKEEP_ALLOWED_ORIGINS: http://127.0.0.1:4310
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Create disposable fixture keys
+        run: |
+          umask 077
+          head -c 32 /dev/urandom > "$STEELKEEP_KEY_FILE"
+          openssl rand -hex 32 > "$STEELKEEP_TOKEN_FILE"
+      - run: bun server/migrate.ts
+      - run: bun test tests/google-drive.integration.test.ts

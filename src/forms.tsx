@@ -1,3 +1,4 @@
+import {isStorageKind} from '../shared/connections'
 import {Fragment,useState,type FormEvent} from 'react'
 import {Archive,ArrowDownToLine,ArrowRight,CheckCircle2,Clock,Database,HardDrive,LockKeyhole,ShieldAlert} from 'lucide-react'
 import {api,ApiError,type Artifact,type Connection,type Job,type Plan,type RestoreIntent} from './state'
@@ -7,6 +8,7 @@ import {useRestoreRequests} from './restore-requests'
 import './forms.css'
 
 const sourceRequirements:Record<string,string>={
+  google_drive:'Google Drive file tree: encrypted portable archive, stable-version checks and independent file-content validation.',
   postgres:'Use a read-only source role and PostgreSQL 17 worker tools. Changing sequence state during capture is refused.',
   mysql:'MySQL 8 clients, InnoDB tables and RELOAD permission are required. Views and stored programs are not supported by this profile.',
   mariadb:'Use MariaDB 11 clients, InnoDB tables and RELOAD permission. Views and stored programs are not supported by this profile.',
@@ -17,6 +19,7 @@ const sourceRequirements:Record<string,string>={
   mssql:'Requires an owner-prepared read-only source and separately provisioned Linux x64 .NET / DacFx tools. BACPAC portability is not native .bak or log-chain recovery.'
 }
 function destinationRequirement(kind:Connection['kind']){
+  if(kind==='google_drive')return 'Use a new empty Google Drive folder. Exported documents are restored as portable files; original files are never overwritten.'
   if(kind==='sqlite')return 'Use a separate initialized empty SQLite file inside the allowed target directory.'
   if(kind==='mongodb')return 'An owner must create an empty __steelkeep_empty_target collection with its ordinary _id index in a separate database. Use a dedicated target-only restore role.'
   if(kind==='redis')return 'Use a separate empty logical database with dedicated restore credentials. The source database cannot be a restore destination.'
@@ -57,6 +60,7 @@ export function ConnectionForm({connection,onDone,onReload}:{connection?:Connect
     try{await api(connection?`/connections/${connection.id}`:'/connections',body,connection?'PATCH':'POST');onDone()}
     catch(err){setError(err instanceof Error?err.message:'Could not save the connection.');setStale(err instanceof ApiError&&err.code==='REVISION_CONFLICT')}finally{setBusy(false)}
   }
+  if(connection&&(kind==='google_drive'||kind==='google_drive_storage'))return <form className="operation-form" onSubmit={async event=>{event.preventDefault();setBusy(true);setError('');try{await api(`/connections/${connection.id}`,{revision:connection.revision,name:String(new FormData(event.currentTarget).get('name'))},'PATCH');onDone()}catch(error){setError(error instanceof Error?error.message:'Could not rename connection.')}finally{setBusy(false)}}><label>Name<input name="name" defaultValue={connection.name} required maxLength={80}/></label><p className="form-hint">Google account, folder and role identify this connection. Add a new Google Drive connection to change them.</p>{error&&<p role="alert">{error}</p>}<Submit busy={busy}>Save name</Submit></form>
   return <form onSubmit={submit} className="operation-form connection-form" aria-busy={busy}><fieldset className="operation-fields" disabled={busy}>
     <div className="form-section">
       <label>Connection type<select value={kind} disabled={editing} onChange={event=>{setKind(event.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="s3">S3-compatible storage</option></select></label>
@@ -96,9 +100,9 @@ export function ConnectionForm({connection,onDone,onReload}:{connection?:Connect
   </fieldset></form>
 }
 export function PlanForm({connections,plan,initialConnection,onDone}:{connections:Connection[];plan?:Plan;initialConnection?:Connection;onDone:()=>void}){
-  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[source,setSource]=useState(plan?.source_id??(initialConnection&&initialConnection.kind!=='s3'&&!initialConnection.config.restoreTarget?initialConnection.id:'')),[storage,setStorage]=useState(plan?.storage_id??(initialConnection?.kind==='s3'?initialConnection.id:'')),[scheduled,setScheduled]=useState(!!plan?.cron)
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[source,setSource]=useState(plan?.source_id??(initialConnection&&!isStorageKind(initialConnection.kind)&&!initialConnection.config.restoreTarget?initialConnection.id:'')),[storage,setStorage]=useState(plan?.storage_id??(initialConnection&&isStorageKind(initialConnection.kind)&&!initialConnection.config.readOnly?initialConnection.id:'')),[scheduled,setScheduled]=useState(!!plan?.cron)
   const [cron,setCron]=useState(plan?.cron??'0 2 * * *'),[timezone,setTimezone]=useState(plan?.timezone??Intl.DateTimeFormat().resolvedOptions().timeZone)
-  const sources=connections.filter(c=>c.kind!=='s3'&&!c.config.restoreTarget),volumes=connections.filter(c=>c.kind==='s3')
+  const sources=connections.filter(c=>!isStorageKind(c.kind)&&!c.config.restoreTarget&&!c.config.importedArchive),volumes=connections.filter(c=>isStorageKind(c.kind)&&!c.config.readOnly)
   const sourceConnection=connections.find(connection=>connection.id===source),storageConnection=connections.find(connection=>connection.id===storage)
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();if(busy)return

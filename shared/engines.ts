@@ -9,4 +9,4 @@ export const engineProfiles=[
   {kind:'mssql',name:'SQL Server',profile:'SQL Server 2019 / 2022 · BACPAC portability',consistency:'Owner-prepared read-only source; independent application schema and data validation.',tools:['.NET 10 Linux x64','DacFx 170.5.96 helper'],prerequisites:'Explicitly provisioned Microsoft tooling; separate precreated empty target. This is not native .bak / log-chain recovery.',acceptance:'pending'}
 ] as const
 export type DatabaseKind=typeof engineProfiles[number]['kind']
-export function engineName(kind:string){return kind==='s3'?'S3 compatible':engineProfiles.find(profile=>profile.kind===kind)?.name??kind}
+export function engineName(kind:string){return kind==='s3'?'S3 compatible':kind==='google_drive'?'Google Drive files':kind==='google_drive_storage'?'Google Drive storage':engineProfiles.find(profile=>profile.kind===kind)?.name??kind}

@@ -1,10 +1,15 @@
+import {isStorageKind} from '../shared/connections'
 import {AppError} from './security'
 
 export type Resource={kind:string;config:Record<string,unknown>}
 
 /** Deliberately conservative across host aliases; canonical local paths are stored at admission. */
 export function resourceKey({kind,config}:Resource):string {
-  if(kind==='s3')throw new AppError('INVALID_RESOURCE','Storage is not a database restore target.')
+  if(isStorageKind(kind))throw new AppError('INVALID_RESOURCE','Storage is not a database restore target.')
+  if(kind==='google_drive'){
+    if(typeof config.folderId!=='string'||typeof config.accountId!=='string')throw new AppError('INVALID_RESOURCE','A confirmed Google account and folder identity are required.')
+    return `google_drive:${config.accountId}:${config.folderId}`
+  }
   if(kind==='sqlite'){
     if(typeof config.path!=='string'||!config.path.startsWith('/'))throw new AppError('INVALID_RESOURCE','SQLite requires a canonical absolute file path.')
     return `sqlite:${config.path}`
