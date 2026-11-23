@@ -142,6 +142,11 @@ async function renderReady(page, theme, errors, assets) {
   await page.evaluate(() => document.fonts.ready)
   await page.waitForLoadState('networkidle')
   const layout = await page.evaluate(() => ({ width: window.innerWidth, documentWidth: document.documentElement.scrollWidth, font: getComputedStyle(document.body).fontFamily, interReady: document.fonts.check('14px "Inter Variable"'), visibleBrand: [...document.querySelectorAll('[aria-label="steelkeep"]')].some(element => element.getBoundingClientRect().width > 0) }))
+  if (layout.documentWidth > layout.width + 1) {
+    const overflowing = await page.evaluate(() => [...document.querySelectorAll('body *')].map(element => ({ tag: element.tagName, className: typeof element.className === 'string' ? element.className : '', left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right })).filter(element => element.right > innerWidth + 1 || element.left < -1).slice(0, 20))
+    console.log(JSON.stringify({ layout, overflowing }))
+    await page.screenshot({ path: `${directory}/overflow-${layout.width}-${theme}.png` })
+  }
   assert.ok(layout.documentWidth <= layout.width + 1, 'Connections page must not have document horizontal overflow.')
   assert.ok(layout.font.includes('Inter') && layout.interReady && layout.visibleBrand, 'Original brand and Inter must render.')
   assert.ok(assets.some(asset => asset.url.includes('/brandassets/') && asset.status === 200), 'Original brand PNG must load from the application.')
