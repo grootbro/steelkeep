@@ -1,10 +1,11 @@
+import {Sidebar} from './sidebar'
 import {GoogleDriveRecoveryPanel} from './google-drive'
 import {isStorageKind} from '../shared/connections'
 import {useEffect,useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery,type UseQueryResult} from '@tanstack/react-query'
 import {useLiveQuery} from '@tanstack/react-db'
-import {Activity,Archive,Clock,Database,ExternalLink,HardDrive,Home,KeyRound,LoaderCircle,LogOut,Menu,Pencil,Plus,RefreshCw,Search,Settings,Shield,Terminal,Trash2,X} from 'lucide-react'
+import {Activity,Archive,Clock,Database,ExternalLink,HardDrive,Home,LoaderCircle,Menu,Pencil,Plus,RefreshCw,Search,Shield,Terminal,Trash2,X} from 'lucide-react'
 import {api,ApiError,jobsCollection,queryClient,type Artifact,type ArtifactCheck,type Overview,type Job,type Plan,type Connection} from './state'
 import {Dashboard} from './dashboard'
 import {OperationTable} from './operation-table'
@@ -32,8 +33,8 @@ import {readPendingBackups,writePendingBackups,type PendingBackups} from './pend
 import {ConnectionForm,PlanForm,RestoreForm} from './forms'
 import {active,Badge,date,Empty,Modal} from './ui'
 import './workspace-polish.css'
+import './interface-quality.css'
 
-const nav=[['overview','Dashboard',Home],['connections','Connections',Database],['plans','Backup plans',Clock],['backups','Snapshots',Archive],['jobs','Jobs',Activity],['settings','Configuration',Settings]] as const
 const titles:Record<string,string>={overview:'Dashboard',connections:'Connections',plans:'Backup plans',backups:'Snapshots',jobs:'Jobs',settings:'Configuration'}
 export function refresh(){void queryClient.invalidateQueries({queryKey:['overview']});void queryClient.invalidateQueries({queryKey:['jobs']});void queryClient.invalidateQueries({queryKey:['job']});void queryClient.invalidateQueries({queryKey:['history']});void queryClient.invalidateQueries({queryKey:['artifact']});void queryClient.invalidateQueries({queryKey:['connection-browser']});void queryClient.invalidateQueries({queryKey:['connection-summary']});void queryClient.invalidateQueries({queryKey:['plan-browser']});void queryClient.invalidateQueries({queryKey:['retention-jobs']})}
 export function Workspace({section,connectionId}:{section:string;connectionId?:string}){
@@ -46,7 +47,7 @@ export function Workspace({section,connectionId}:{section:string;connectionId?:s
 function SessionWorkspace({section,connectionId,user}:{section:string;connectionId?:string;user:OwnerUser|null}){
   const overview=useQuery({queryKey:['overview'],queryFn:()=>api<Overview>('/overview'),refetchInterval:query=>query.state.error instanceof ApiError&&query.state.error.status===401?false:5000})
   if(overview.error instanceof ApiError&&overview.error.status===401)return <AuthScreen status={{setupRequired:false,authenticated:false,user:null,bootstrapAuthorized:false}}/>
-  if(overview.isPending)return <div className="loading"><LoaderCircle className="spin"/>Connecting to Steelkeep…</div>
+  if(overview.isPending)return <AuthLoading/>
   return <ConnectedWorkspace section={section} connectionId={connectionId} overview={overview} user={user}/>
 }
 function ConnectedWorkspace({section,connectionId,overview,user}:{section:string;connectionId?:string;overview:UseQueryResult<Overview,Error>;user:OwnerUser|null}){
@@ -54,7 +55,7 @@ function ConnectedWorkspace({section,connectionId,overview,user}:{section:string
   const [modal,setModal]=useState<'connection'|'plan'|'drive-recovery'|null>(null),[editingConnection,setEditingConnection]=useState<Connection|undefined>(),[editingPlan,setEditingPlan]=useState<Plan|undefined>(),[selected,setSelected]=useState<string|null>(null),[restore,setRestore]=useState<Artifact|null>(null),[menu,setMenu]=useState(false)
   const [artifactChecks,setArtifactChecks]=useState<Record<string,ArtifactCheck>>({}),[checkingBackup,setCheckingBackup]=useState<string|null>(null)
   const [initialConnectionKind,setInitialConnectionKind]=useState<Connection['kind']>('postgres')
-  useEffect(()=>{if(section==='connections'){const fragment=new URLSearchParams(window.location.hash.slice(1));if(fragment.has('google-drive')||fragment.has('google-drive-error')){setInitialConnectionKind('google_drive');setEditingConnection(undefined);setModal('connection')}}},[section])
+  useEffect(()=>{setModal(null);setRestore(null);setSelected(null);if(section==='connections'){const fragment=new URLSearchParams(window.location.hash.slice(1));if(fragment.has('google-drive')||fragment.has('google-drive-error')){setInitialConnectionKind('google_drive');setEditingConnection(undefined);setModal('connection')}}},[section,connectionId])
   const [planConnection,setPlanConnection]=useState<Connection|undefined>()
   const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[testingConnection,setTestingConnection]=useState<string|null>(null)
   const [historyOpen,setHistoryOpen]=useState(false)
@@ -125,7 +126,7 @@ function ConnectedWorkspace({section,connectionId,overview,user}:{section:string
   }
   const needsConnection=section==='overview'&&(!data?.connections.some(connection=>!isStorageKind(connection.kind)&&!connection.config.restoreTarget&&!connection.blocked&&connection.check_status==='available')||!data?.connections.some(connection=>isStorageKind(connection.kind)&&connection.check_status==='available'))
   const action=!can('configure')?null:section==='connections'||needsConnection?<button className="primary" onClick={()=>showConnection()}><Plus size={16}/>Add connection</button>:['plans','overview'].includes(section)?<button className="primary" onClick={()=>showPlan()}><Plus size={16}/>Create plan</button>:null
-  return <div className="app" data-theme={appearance.theme}><a className="skip-link" href="#main-content">Skip to content</a><aside className={`sidebar ${menu?'open':''}`}><Link to="/" className="brand"><Brand size={30}/></Link><button className="mobile-close icon-button" aria-label="Close navigation" onClick={()=>setMenu(false)}><X size={18}/></button><nav aria-label="Main navigation">{nav.map(([key,label,Icon])=><Link key={key} to="/$section" params={{section:key}} onClick={()=>{setMenu(false);setFilter('all');setSearch('')}} className={section===key?'active':''} aria-current={section===key?'page':undefined}><Icon size={18}/>{label}{key==='jobs'&&jobs.some(active)&&<span className="nav-count">{jobs.filter(active).length}</span>}</Link>)}</nav><div className="sidebar-links"><a href="/openapi" target="_blank" rel="noreferrer"><Terminal size={17}/>API documentation<ExternalLink size={12}/></a></div><div className="sidebar-bottom"><div className="sidebar-identity"><span className="installation-avatar">{user?user.name.slice(0,1).toUpperCase():<KeyRound size={17}/>}</span><div className="sidebar-account"><Link to="/$section" params={{section:'settings'}} aria-label="Open account settings" onClick={()=>setConfigurationSection('account')}><strong>{user?.name??'Private installation'}</strong></Link><span>{user?'Owner account':'Scoped API session'}</span></div></div><div className="sidebar-utilities"><ThemeButton appearance={appearance} className="icon-button sidebar-theme-toggle"/><button className="icon-button" disabled={busy} aria-label="Sign out" onClick={()=>void act(async()=>{await api('/auth/logout',{});returnToSignIn()})}><LogOut size={16}/></button></div></div></aside>{menu&&<button className="nav-overlay" aria-label="Close navigation" onClick={()=>setMenu(false)}/>}
+  return <div className="app" data-theme={appearance.theme}><a className="skip-link" href="#main-content">Skip to content</a><Sidebar section={section} user={user} open={menu} onClose={()=>setMenu(false)} onNavigate={()=>{setMenu(false);setFilter('all');setSearch('')}} onAccount={()=>{setConfigurationSection('account');setMenu(false)}} onSignOut={()=>void act(async()=>{await api('/auth/logout',{});returnToSignIn()})} signingOut={busy} activeJobs={jobs.filter(active).length} themeButton={<ThemeButton appearance={appearance} className="icon-button sidebar-theme-toggle"/>}/>{menu&&<button className="nav-overlay" aria-label="Close navigation" onClick={()=>setMenu(false)}/>}
     <main id="main-content"><div className="mobile-bar"><button className="icon-button" aria-label="Open navigation" onClick={()=>setMenu(true)}><Menu size={20}/></button><Brand size={22}/><ThemeButton appearance={appearance} className="icon-button mobile-theme-toggle"/></div><div className="page">{!connectionId&&<header className="page-header"><h1>{title}</h1><div className="actions"><span className="refresh-state">{overview.isFetching?<><LoaderCircle size={12} className="spin"/>Updating</>:<>Updated {date(data?.serverTime)}</>}</span><button className="icon-button" aria-label="Refresh workspace" onClick={refresh}><RefreshCw size={17}/></button>{section==='connections'&&can('configure')&&data?.connections.some(connection=>connection.kind==='google_drive_storage')&&<button className="secondary" onClick={()=>setModal('drive-recovery')}>Drive recovery</button>}{action}</div></header>}
     {actor&&can('backup:delete')&&capabilities.data?.operations.includes('manual_snapshot_deletion')&&<PendingSnapshotDeletions actor={actor} onChanged={refresh}/>}
     {notice&&<div role="alert" className="notice error">{notice}<button className="icon-button" onClick={()=>setNotice('')} aria-label="Dismiss"><X size={14}/></button></div>}

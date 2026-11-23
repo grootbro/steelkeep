@@ -68,12 +68,12 @@ acceptance('isolated owner UI: claim, daily login, session revocation and accoun
   await page.goto(origin);await page.getByRole('heading',{name:'Set up your installation'}).waitFor()
   expect(await page.locator('form input').count()).toBe(1)
   expect(await page.getByLabel('Setup key',{exact:true}).evaluate(node=>node===document.activeElement)).toBe(true)
-  // Old "system" preferences and OS dark mode must not select a third mode.
+  // Invalid legacy preferences use the application's dark default, without a third mode.
   await page.evaluate(()=>localStorage.setItem('steelkeep-auth-theme','system'));await page.reload()
   await page.getByRole('heading',{name:'Set up your installation'}).waitFor()
-  expect(await page.locator('.auth-screen').getAttribute('data-theme')).toBe('light')
+  expect(await page.locator('.auth-screen').getAttribute('data-theme')).toBe('dark')
   await page.setViewportSize({width:390,height:844})
-  for(const theme of ['dark','light']){
+  for(const theme of ['light','dark']){
    await page.getByRole('button',{name:`Switch to ${theme} theme`,exact:true}).click()
    expect(await page.locator('.auth-screen').getAttribute('data-theme')).toBe(theme)
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true)

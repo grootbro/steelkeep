@@ -144,6 +144,10 @@ encryption behavior; the Drive connector does not claim to encrypt all engine du
 - Drive has no atomic tree snapshot. Steelkeep checks versions around each capture
   and repeats the inventory before publication, refusing observed changes. This
   does not establish a database-style point-in-time snapshot.
+- Recovery validation may repeat its complete read-only comparison up to four times
+  when metadata changes during a check. Every attempt retains ownership, hierarchy,
+  version and full-content checks. Writes are never replayed. Persistent instability
+  leaves the job interrupted and its target reserved.
 - Allow temporary disk space for the encrypted archive and a private capture or
   authenticated plaintext copy, potentially about twice the archive size plus reserve.
 
@@ -185,15 +189,15 @@ The following checks ran on isolated GitHub runners on 23 November 2026:
 
 | Evidence | Result | Scope |
 | --- | --- | --- |
-| [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45215869706), `60af3f0` | Both TypeScript configurations, 122 tests / 1,094 assertions passed | Includes actual callback-route regressions for Google's `iss`/extra metadata and the observed resumable-upload `session_crd` parameter. |
-| [PostgreSQL integration step](https://github.com/grootbro/steelkeep/actions/runs/45213244929), `0fee4ab` | 1 test / 202 assertions passed | Disposable PostgreSQL 17; OAuth lifecycle, combined account grants, configure-scoped MCP reuse, owner-only consent/key controls, atomic import, corruption and concurrency. Google transport is synthetic. |
-| [Drive UI step](https://github.com/grootbro/steelkeep/actions/runs/45213914585), `23131af` | UI step passed | Four desktop/mobile light/dark captures, common connection dialog, both roles together, partial-save continuation, one-time claim, catalog retry and owner controls. Google requests are intercepted. Packaging's stale proof-marker check was corrected in the separate release run. |
-| [Release packaging](https://github.com/grootbro/steelkeep/actions/runs/45214431653), `e5de5b8` | Passed | Runtime/frontend inputs matched the qualified UI revision; a 3.9 MB archive with per-file hashes was produced without Docker. |
+| [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45225142447), `467127a` | Both TypeScript configurations, 125 tests / 1,111 assertions passed | Callback metadata, observed resumable-session URL, encrypted archives and bounded read-only recovery checks without write replay. |
+| [PostgreSQL integration step](https://github.com/grootbro/steelkeep/actions/runs/45220463185), `20838f5` | 1 test / 267 assertions passed | Disposable PostgreSQL 17; OAuth lifecycle, account/MCP permissions, atomic import and independent credential transactions during locked restore reviews, including durable revoked-token state. Google transport is synthetic. |
+| [UI acceptance](https://github.com/grootbro/steelkeep/actions/runs/45222655345), `fd835e0` | Passed | Common connection dialog, both roles together, partial-save continuation, single claim, catalog retry and owner controls, plus six responsive workspace/theme checks. Google provider requests are intercepted. |
+| Runtime packaging in the same run | Passed | A 3.9 MB archive with per-file hashes was produced from the qualified UI revision without Docker. |
 
-The existing installation was updated using its existing image and dependencies.
-Migration 13 and authenticated HTTPS configuration/API/MCP checks passed. The
-client-only `60af3f0` correction reused the qualified frontend without rebuilding it;
-the replacement server file and all retained runtime files were hash-checked.
+The existing installation uses UI checkpoint `fd835e0` and server checkpoint `467127a`,
+reusing its image and dependencies. Migration 13 and authenticated HTTPS configuration,
+API and MCP checks passed. The final server-only correction reused the qualified
+frontend; the replacement server file and all retained runtime files were hash-checked.
 
 A real internal Workspace account completed native OAuth with both scopes. An actual
 PostgreSQL 17.11 archive (97,381 bytes) and its portable descriptor were published to
@@ -201,6 +205,15 @@ Drive. A complete authenticated HTTPS download through Steelkeep matched an inde
 SHA-256, and the MCP recovery catalog found the published archive. This establishes a
 live storage transfer and catalog, not restoration of that production database.
 
+A separate live synthetic My Drive tree completed **Drive → S3 → fresh Drive folder**
+through actual MCP operations. The encrypted archive was 2,505 bytes; the fresh-target
+restore finished `succeeded` with validation `passed`. Independent downloads matched
+all four ordinary files (including binary and zero-byte content), the five-entry tree,
+ownership and source versions. A prior interrupted test target and its reservation
+were retained; it was never overwritten or retried. The synthetic manual plan was
+paused after the proof. Evidence remains private on the installation.
+
 Mocked Google responses and archive cycles do not establish a live Workspace OAuth
 connection or recovery. No production Google account is contacted by default tests.
-Record additional live file-source and isolated recovery proofs separately.
+This live proof did not qualify Google-native document export or recovery on a fresh
+installation. Those boundaries retain their separate synthetic test evidence.

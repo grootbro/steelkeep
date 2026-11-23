@@ -17,12 +17,12 @@ function PasswordField({label,name,autoComplete,minLength,help,disabled=false}:{
   const [visible,setVisible]=useState(false),id=useId(),hint=useId()
   return <label className="password-label" htmlFor={id}>{label}<span className="password-control"><input id={id} name={name} type={visible?'text':'password'} autoComplete={autoComplete} required minLength={minLength} maxLength={128} disabled={disabled} aria-describedby={help?hint:undefined}/><button type="button" className="password-visibility" onClick={()=>setVisible(value=>!value)} aria-label={`${visible?'Hide':'Show'} ${label.toLowerCase()}`} aria-pressed={visible} disabled={disabled}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></span>{help&&<small id={hint}>{help}</small>}</label>
 }
-function AuthShell({children}:{children:ReactNode}){
+function AuthShell({children,loading=false}:{children:ReactNode;loading?:boolean}){
   const appearance=useAppearance()
-  return <main className="auth-screen" data-theme={appearance.theme}><ThemeButton appearance={appearance} className="auth-theme-toggle"/><div className="auth-stage">{children}<p className="auth-footnote"><LockKeyhole size={13}/>Your installation. Your data.</p></div></main>
+  return <main className={`auth-screen${loading?' app-loading':''}`} data-theme={appearance.theme}><ThemeButton appearance={appearance} className="auth-theme-toggle"/><div className="auth-stage">{children}{!loading&&<p className="auth-footnote"><LockKeyhole size={13}/>Your installation. Your data.</p>}</div></main>
 }
-export function AuthLoading(){return <AuthShell><section className="auth-card auth-loading" aria-busy="true"><Brand size={38}/><p><LoaderCircle size={17} className="spin"/>Connecting to your installation…</p></section></AuthShell>}
-export function AuthUnavailable({message,onRetry}:{message:string;onRetry:()=>void}){return <AuthShell><section className="auth-card"><Brand size={38}/><h1>Could not connect</h1><p className="auth-description">Your installation is unavailable. Try again in a moment.</p><p className="auth-error" role="alert">{message}</p><button className="auth-submit" onClick={onRetry}>Try again</button></section></AuthShell>}
+export function AuthLoading(){return <AuthShell loading><section className="auth-loading" role="status" aria-live="polite" aria-busy="true"><Brand size={42}/><p><LoaderCircle size={17} className="spin" aria-hidden="true"/>Loading Steelkeep…</p></section></AuthShell>}
+export function AuthUnavailable({message,onRetry,title='Could not connect',description='Your installation is unavailable. Try again in a moment.'}:{message:string;onRetry:()=>void;title?:string;description?:string}){return <AuthShell><section className="auth-card"><Brand size={38}/><h1>{title}</h1><p className="auth-description">{description}</p><p className="auth-error" role="alert">{message}</p><button className="auth-submit" onClick={onRetry}>Try again</button></section></AuthShell>}
 export function AuthScreen({status}:{status:AuthStatus}){
   const [current,setCurrent]=useState(status)
   const [mode,setMode]=useState<'claim'|'setup'|'signin'>(status.setupRequired?(status.bootstrapAuthorized?'setup':'claim'):'signin')

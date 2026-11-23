@@ -208,11 +208,48 @@ acceptance('Google Drive OAuth lifecycle and portable import use real isolated P
   expect((await db.selectFrom('restore_intents').select('id').execute())).toHaveLength(0)
   expect((await db.selectFrom('connections').selectAll().where('id','=',targetId).executeTakeFirstOrThrow()).config).toEqual({database:'synthetic_empty_'+nonce,restoreTarget:true})
   expect(opened).toBe(closed)
+  // Exercise real review transactions: the earlier configuration spy binds OAuth
+  // to its root DB and therefore cannot catch accidental nested transactions.
+  const driveSource=await db.selectFrom('connections').selectAll().where('id','in',[...ownedConfiguredIds]).where('kind','=','google_drive').executeTakeFirstOrThrow()
+  const driveTargetId=randomUUID(),driveTargetFolder='synthetic_restore_'+nonce,backupRunId=randomUUID(),backupArtifactId=randomUUID(),backupKey='synthetic-review-backup-'+nonce
+  ownedTargetIds.add(driveTargetId);requestKeys.add(backupKey)
+  await db.insertInto('connections').values({id:driveTargetId,name:'Synthetic empty Drive restore '+nonce,kind:'google_drive',config:{...driveSource.config,database:driveTargetFolder,folderId:driveTargetFolder,restoreTarget:true},secret:seal({}),check_status:'available',checked_at:new Date()}).execute()
+  await db.insertInto('runs').values({id:backupRunId,plan_id:null,type:'backup',status:'succeeded',phase:'completed',idempotency_key:backupKey,source_id:driveSource.id,storage_id:storageId,target_id:null,artifact_id:backupArtifactId,started_at:new Date(),finished_at:new Date(),heartbeat_at:null,error_code:null,error_message:null,validation:null,cancel_requested:false,attempt:1,execution_token:null}).execute()
+  await db.insertInto('artifacts').values({id:backupArtifactId,run_id:backupRunId,source_id:driveSource.id,storage_id:storageId,object_key:'synthetic-review-only',size:'1',sha256:hash('x'),engine:'google_drive',server_version:'Drive API v3 / folder-v1',tool_version:'synthetic-review',availability:'present',checked_at:new Date(),manifest:{format:1,engine:'google_drive',database:driveSource.config.database,binding:'drive:synthetic-account-'+nonce+':'+driveSource.config.database,serverVersion:'Drive API v3 / folder-v1',objects:{},data:{},sequences:{}}}).execute()
+  await db.transaction().execute(async trx=>{const reviewedServices=new Services(trx,services.oauthDb);expect(reviewedServices.db.isTransaction).toBe(true);expect(reviewedServices.oauthDb).toBe(db);expect(reviewedServices.oauthDb.isTransaction).toBe(false)})
+  const configure=spyOn(GoogleDriveOAuth.prototype as unknown as {configuration:()=>typeof configuration},'configuration').mockReturnValue(configuration)
+  const reviewProvider=spyOn(globalThis,'fetch').mockImplementation(Object.assign(async(...[input,init]:Parameters<typeof globalThis.fetch>)=>{
+   const url=new URL(input instanceof Request?input.url:String(input))
+   if(url.origin==='https://oauth2.googleapis.com')return transport(input,init)
+   expect(url.origin).toBe('https://www.googleapis.com');expect(init?.method).toBe('GET')
+   if(url.pathname==='/drive/v3/about')return Response.json({user:{permissionId:'synthetic-account-'+nonce}})
+   if(url.pathname==='/drive/v3/files'){expect(url.searchParams.get('q')).toContain(driveTargetFolder);return Response.json({files:[]})}
+   expect(url.pathname).toBe('/drive/v3/files/'+driveTargetFolder)
+   return Response.json({id:driveTargetFolder,name:'Synthetic empty target',mimeType:'application/vnd.google-apps.folder',parents:['synthetic_parent_'+nonce],version:'1',trashed:false,capabilities:{canDownload:true,canAddChildren:true}})
+  },{preconnect:actualFetch.preconnect}))
+  const reviewMcp=new Client({name:'google-drive-transaction-review-proof',version:'1'})
+  try{
+   await reviewMcp.connect(new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{requestInit:{headers:{authorization:'Bearer '+config.token()}},fetch:mcpFetch}))
+   const prepare=()=>reviewMcp.callTool({name:'prepare_restore',arguments:{artifactId:backupArtifactId,targetId:driveTargetId}})
+   const cached=await prepare();if(cached.isError)console.error('Synthetic cached Drive review failed:',JSON.stringify(cached.structuredContent??cached.content));expect(cached.isError).not.toBe(true);expect((cached.structuredContent as {data:{review:{checks:Record<string,boolean>}}}).data.review.checks.targetEmpty).toBe(true)
+   const beforeRefresh=refreshRequests
+   mode='preserve';await sql`UPDATE google_drive_grants SET secret=${seal({refreshToken:rotatedRefresh,accessToken:'expired-synthetic-token',expiresAt:0},key)} WHERE id=${combined.id}`.execute(db)
+   const refreshed=await prepare();if(refreshed.isError)console.error('Synthetic refreshed Drive review failed:',JSON.stringify(refreshed.structuredContent??refreshed.content));expect(refreshed.isError).not.toBe(true);expect(refreshRequests).toBe(beforeRefresh+1)
+   expect((await oauth.grant(combined.id)).revision).toBe(1)
+   mode='invalid';await sql`UPDATE google_drive_grants SET secret=${seal({refreshToken:rotatedRefresh,accessToken:'expired-synthetic-token',expiresAt:0},key)} WHERE id=${combined.id}`.execute(db)
+   const rejected=await prepare();expect(rejected.isError).toBe(true);expect(rejected.structuredContent).toMatchObject({data:{error:{code:'GOOGLE_RECONNECT_REQUIRED'}}})
+   const persisted=(await sql<{status:string;revision:number;secret:string}>`SELECT status,revision,secret FROM google_drive_grants WHERE id=${combined.id}`.execute(db)).rows[0]
+   expect(persisted.status).toBe('reconnect_required');expect(persisted.revision).toBe(2);expect(unseal(persisted.secret,key)).toEqual({})
+   expect((await db.selectFrom('restore_intents').select('id').where('artifact_id','=',backupArtifactId).execute())).toHaveLength(2)
+   expect((await db.selectFrom('outbox').select('run_id').execute())).toHaveLength(0)
+   expect((await db.selectFrom('target_blocks').select('target_id').execute())).toHaveLength(0)
+  }finally{await reviewMcp.close();reviewProvider.mockRestore();configure.mockRestore()}
   console.log('Google Drive isolated-PG proof: OAuth replay/expiry/actor/scopes/refresh/revocation and portable full-SHA atomic import/idempotency passed; no Google network or native target writes.')
  }finally{
   if(guarded){
    const runs=requestKeys.size?await db.selectFrom('runs').select(['id','source_id','artifact_id']).where('idempotency_key','in',[...requestKeys]).execute():[]
    const runIds=runs.map(row=>row.id),sourceIds=runs.map(row=>row.source_id),artifactIds=runs.flatMap(row=>row.artifact_id?[row.artifact_id]:[])
+   if(artifactIds.length)await db.deleteFrom('restore_intents').where('artifact_id','in',artifactIds).execute()
    if(runIds.length)await db.deleteFrom('events').where('run_id','in',runIds).execute()
    if(artifactIds.length)await db.deleteFrom('artifacts').where('id','in',artifactIds).execute()
    if(runIds.length)await db.deleteFrom('runs').where('id','in',runIds).execute()

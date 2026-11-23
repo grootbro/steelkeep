@@ -100,7 +100,7 @@ export class Services {
  readonly artifactComments:ArtifactCommentServices
  readonly artifactDownloads:ArtifactDownloadServices
  readonly artifactDeletions:ArtifactDeletionServices
- constructor(public db:Kysely<Schema>){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDeletions=new ArtifactDeletionServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
+ constructor(public db:Kysely<Schema>,public oauthDb:Kysely<Schema>=db){this.agents=new AgentServices(db);this.retention=new RetentionServices(db);this.notifications=new NotificationServices(db);this.connectionHistory=new ConnectionHistoryServices(db);this.artifactComments=new ArtifactCommentServices(db);this.artifactDeletions=new ArtifactDeletionServices(db);this.artifactDownloads=new ArtifactDownloadServices(db,(artifact,signal)=>this.openArtifactDownload(artifact,signal))}
  protected openArtifactDownload:DownloadOpen=async(artifact,signal)=>openStoredArchive(this.db,await this.connection(artifact.storage_id),artifact.object_key,signal)
  authenticate(request:Request){return authenticateRequest(request,this.db)}
  sourceBlocks(){return this.db.selectFrom('source_blocks').innerJoin('runs','runs.id','source_blocks.run_id').innerJoin('connections','connections.id','runs.source_id')
@@ -312,7 +312,7 @@ export class Services {
    if(!artifact)throw new AppError('NOT_FOUND','Backup not found.',404)
    if(artifact.deletion_state!=='active')throw new AppError('ARTIFACT_DELETION_RESERVED','This backup is reserved for cleanup or has been deleted. It cannot be reviewed for restore.',409)
    await lockConnections(trx,[artifact.source_id,artifact.storage_id,targetId])
-   const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx),artifactId,targetId)
+   const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx,this.oauthDb),artifactId,targetId)
    const id=randomUUID()
    const intent=await trx.insertInto('restore_intents').values({id,actor,artifact_id:artifactId,target_id:targetId,review:review as unknown as Record<string,unknown>,fingerprint:review.fingerprint,expires_at:sql<Date>`now()+interval '10 minutes'`,consumed_run_id:null,idempotency_key:null}).returning('expires_at').executeTakeFirstOrThrow()
    await audit(trx,actor,'restore.review.prepared',id)
@@ -337,7 +337,7 @@ export class Services {
    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${name},2))`.execute(trx)
    const blocked=await trx.selectFrom('target_blocks').select('run_id').where('resource_key','=',name).executeTakeFirst()
    if(blocked)throw new AppError('TARGET_BLOCKED','This target is reserved or contains a previous restore. Prepare a new empty target.',409)
-   const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx),intent.artifact_id,intent.target_id)
+   const {inspectRestore}=await import('./restore'),review=await inspectRestore(new Services(trx,this.oauthDb),intent.artifact_id,intent.target_id)
    if(review.fingerprint!==intent.fingerprint)throw new AppError('RESTORE_REVIEW_CHANGED','The artifact or target changed. Prepare and review again.',409)
    // Locks and native preflight may outlive the reviewed deadline.
    const admissionClock=await sql<{now:Date}>`SELECT clock_timestamp() AS now`.execute(trx)
