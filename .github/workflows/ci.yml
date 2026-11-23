@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      source_only:
+        description: Recheck TypeScript and unit tests after a test-only correction
+        type: boolean
+        default: false
       drive_ui_only:
         description: Rerun only the isolated Drive UI proof after an already-qualified source change
         type: boolean
@@ -23,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.source_only || false }}
   cancel-in-progress: true
 
 jobs:
@@ -43,9 +47,10 @@ jobs:
       - run: bun run typecheck:acceptance
       - run: bun run test
       - run: bun run build
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.source_only }}
 
   google-drive:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.release_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.release_only && !inputs.source_only) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
