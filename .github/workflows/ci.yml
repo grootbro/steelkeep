@@ -10,6 +10,14 @@ on:
         description: Rerun only the isolated Drive UI proof after an already-qualified source change
         type: boolean
         default: false
+      release_only:
+        description: Build a runtime bundle using a successful unchanged-source UI qualification
+        type: boolean
+        default: false
+      qualified_ui_run:
+        description: Successful Drive UI workflow run used by release_only
+        type: string
+        default: '45209048473'
 
 permissions:
   contents: read
@@ -20,7 +28,7 @@ concurrency:
 
 jobs:
   source:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.drive_ui_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.drive_ui_only && !inputs.release_only) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -37,6 +45,7 @@ jobs:
       - run: bun run build
 
   google-drive:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.release_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
@@ -80,6 +89,16 @@ jobs:
         env:
           STEELKEEP_UI_ACCEPTANCE: github-google-drive
         run: node .github/scripts/check-google-drive.cjs
+      - name: Package qualified runtime without rebuilding
+        env:
+          STEELKEEP_UI_ACCEPTANCE: github-google-drive
+        run: python3 .github/scripts/package-release.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: steelkeep-release-${{ github.sha }}
+          path: ${{ runner.temp }}/steelkeep-release/*
+          retention-days: 7
+          if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() && (steps.drive-ui.outcome == 'success' || steps.drive-ui.outcome == 'failure') }}
         with:
@@ -87,3 +106,39 @@ jobs:
           path: output/playwright/google-drive-ui/
           retention-days: 7
           if-no-files-found: warn
+
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Read successful source qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFIED_UI_RUN: ${{ inputs.qualified_ui_run }}
+        run: |
+          gh run view "$QUALIFIED_UI_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha > "$RUNNER_TEMP/qualified-ui-run.json"
+          gh run download "$QUALIFIED_UI_RUN" --repo "$GITHUB_REPOSITORY" --name google-drive-ui --dir output/playwright/google-drive-ui
+      - run: bun run build
+      - name: Package unchanged qualified runtime
+        env:
+          STEELKEEP_UI_ACCEPTANCE: github-google-drive
+          STEELKEEP_QUALIFIED_UI_RUN_FILE: ${{ runner.temp }}/qualified-ui-run.json
+        run: python3 .github/scripts/package-release.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: steelkeep-release-${{ github.sha }}
+          path: ${{ runner.temp }}/steelkeep-release/*
+          retention-days: 7
+          if-no-files-found: error
