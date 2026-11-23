@@ -150,7 +150,7 @@ async function renderReady(page, theme, errors, assets) {
 }
 
 async function workflows(page, observed) {
-  const panel = page.locator('.google-drive-panel'), picker = panel.getByLabel('Use Google Drive for', { exact: true })
+  const panel = page.locator('.google-drive-panel'), picker = panel.locator('.google-drive-purpose select')
   assert.equal(observed.authorizations.length, 0, 'Loading the panel cannot start OAuth automatically.')
   assert.equal(await panel.getByRole('link', { name: 'Save recovery key' }).getAttribute('href'), '/api/v1/google-drive/recovery-key')
   const flows = [
@@ -161,7 +161,7 @@ async function workflows(page, observed) {
   ]
   for (const flow of flows) {
     await picker.selectOption(flow.purpose)
-    await panel.getByLabel('Connection name', { exact: true }).fill(flow.name)
+    await panel.locator('.google-drive-fields > label:not(.google-drive-folder) > input').fill(flow.name)
     if (flow.folder) await panel.locator('.google-drive-folder input').fill(flow.folder)
     await panel.getByRole('button', { name: flow.button, exact: true }).click()
     await panel.getByRole('link', { name: 'View connection', exact: true }).waitFor()
@@ -173,7 +173,7 @@ async function workflows(page, observed) {
     checks.push(`native-${flow.purpose}-connection-form`)
   }
   await panel.locator('.google-drive-recovery > summary').click()
-  await panel.getByLabel('Archive storage', { exact: true }).selectOption(previousStorage)
+  await panel.locator('.google-drive-catalog-controls select').selectOption(previousStorage)
   await panel.getByRole('button', { name: 'Browse archives', exact: true }).click()
   const importButton = panel.getByRole('button', { name: 'Verify and import', exact: true })
   await importButton.waitFor();assert.ok(await importButton.isDisabled(), 'Archive import requires explicit trust acknowledgement.')

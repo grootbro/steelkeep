@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      drive_ui_only:
+        description: Rerun only the isolated Drive UI proof after an already-qualified source change
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +20,7 @@ concurrency:
 
 jobs:
   source:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.drive_ui_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -65,6 +71,7 @@ jobs:
           openssl rand -hex 32 > "$STEELKEEP_TOKEN_FILE"
       - run: bun server/migrate.ts
       - run: bun test tests/google-drive.integration.test.ts
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.drive_ui_only }}
       - run: bun run build
       - name: Install isolated browser
         run: ./node_modules/.bin/playwright install --with-deps chromium
