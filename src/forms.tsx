@@ -60,7 +60,14 @@ export function ConnectionForm({connection,onDone,onReload}:{connection?:Connect
     try{await api(connection?`/connections/${connection.id}`:'/connections',body,connection?'PATCH':'POST');onDone()}
     catch(err){setError(err instanceof Error?err.message:'Could not save the connection.');setStale(err instanceof ApiError&&err.code==='REVISION_CONFLICT')}finally{setBusy(false)}
   }
-  if(connection&&(kind==='google_drive'||kind==='google_drive_storage'))return <form className="operation-form" onSubmit={async event=>{event.preventDefault();setBusy(true);setError('');try{await api(`/connections/${connection.id}`,{revision:connection.revision,name:String(new FormData(event.currentTarget).get('name'))},'PATCH');onDone()}catch(error){setError(error instanceof Error?error.message:'Could not rename connection.')}finally{setBusy(false)}}><label>Name<input name="name" defaultValue={connection.name} required maxLength={80}/></label><p className="form-hint">Google account, folder and role identify this connection. Add a new Google Drive connection to change them.</p>{error&&<p role="alert">{error}</p>}<Submit busy={busy}>Save name</Submit></form>
+  async function renameDrive(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();if(!connection)return
+    setBusy(true);setError('')
+    try{await api(`/connections/${connection.id}`,{revision:connection.revision,name:String(new FormData(event.currentTarget).get('name'))},'PATCH');onDone()}
+    catch(error){setError(error instanceof Error?error.message:'Could not rename connection.')}
+    finally{setBusy(false)}
+  }
+  if(connection&&(kind==='google_drive'||kind==='google_drive_storage'))return <form className="operation-form" onSubmit={renameDrive}><label>Name<input name="name" defaultValue={connection.name} required maxLength={80}/></label><p className="form-hint">Google account, folder and role identify this connection. Add a new Google Drive connection to change them.</p>{error&&<p role="alert">{error}</p>}<Submit busy={busy}>Save name</Submit></form>
   return <form onSubmit={submit} className="operation-form connection-form" aria-busy={busy}><fieldset className="operation-fields" disabled={busy}>
     <div className="form-section">
       <label>Connection type<select value={kind} disabled={editing} onChange={event=>{setKind(event.target.value as Connection['kind']);setTarget(false)}}>{engineProfiles.map(profile=><option key={profile.kind} value={profile.kind}>{profile.name}</option>)}<option value="s3">S3-compatible storage</option></select></label>
