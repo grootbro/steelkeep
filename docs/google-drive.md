@@ -189,6 +189,7 @@ The following checks ran on isolated GitHub runners on 23 November 2026:
 
 | Evidence | Result | Scope |
 | --- | --- | --- |
+| [Merged-main CI](https://github.com/grootbro/steelkeep/actions/runs/45227348430), `4924d4f` | Passed | Both TypeScript configurations, 125 tests / 1,111 assertions, PostgreSQL integration (1 test / 267 assertions), Drive UI and six workspace quality cases, builds and runtime packaging. This is runner evidence, separate from the live operations below. |
 | [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45225142447), `467127a` | Both TypeScript configurations, 125 tests / 1,111 assertions passed | Callback metadata, observed resumable-session URL, encrypted archives and bounded read-only recovery checks without write replay. |
 | [PostgreSQL integration step](https://github.com/grootbro/steelkeep/actions/runs/45220463185), `20838f5` | 1 test / 267 assertions passed | Disposable PostgreSQL 17; OAuth lifecycle, account/MCP permissions, atomic import and independent credential transactions during locked restore reviews, including durable revoked-token state. Google transport is synthetic. |
 | [UI acceptance](https://github.com/grootbro/steelkeep/actions/runs/45222655345), `fd835e0` | Passed | Common connection dialog, both roles together, partial-save continuation, single claim, catalog retry and owner controls, plus six responsive workspace/theme checks. Google provider requests are intercepted. |
