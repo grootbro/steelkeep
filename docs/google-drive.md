@@ -41,6 +41,10 @@ The origin must also be in `STEELKEEP_ALLOWED_ORIGINS`. Apply the additive datab
 migration and restart web/worker with this configuration in your normal deployment
 procedure. No Google connection is enabled merely by installing the code.
 
+Redact OAuth `code` and `state` query values and callback `Location` headers from
+reverse-proxy access logs. The callback validates Google's optional `iss`, accepts
+bounded additional Google metadata, and returns a safe redirect for failed flows.
+
 ## Connect an account and folder
 
 Open **Connections → Add connection → Google Drive** as the owner and connect your
@@ -181,15 +185,22 @@ The following checks ran on isolated GitHub runners on 23 November 2026:
 
 | Evidence | Result | Scope |
 | --- | --- | --- |
-| [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45205209830), `6eab14c` | Both TypeScript configurations, 119 tests / 1,031 assertions, production build passed | Includes injected Google transport and encrypted archive tests; that run's original UI selector failed and was corrected separately. |
-| PostgreSQL integration in the same run | 1 test / 156 assertions passed | Disposable PostgreSQL 17, OAuth state/claim/refresh/revocation, portable import, corruption and concurrency guards; synthetic Google transport. |
-| [Drive UI acceptance](https://github.com/grootbro/steelkeep/actions/runs/45209048473), `9a8b6b1` | Passed | Desktop/mobile, light/dark, original branding, four connection purposes, one-time claim, catalog/import retry gates and owner controls; Google requests are intercepted. |
-| [Release packaging](https://github.com/grootbro/steelkeep/actions/runs/45209730718), `58b022e` | Passed | Runtime/build inputs matched the qualified UI revision; a 3.9 MB archive with per-file hashes was produced without Docker. |
+| [Source CI](https://github.com/grootbro/steelkeep/actions/runs/45215869706), `60af3f0` | Both TypeScript configurations, 122 tests / 1,094 assertions passed | Includes actual callback-route regressions for Google's `iss`/extra metadata and the observed resumable-upload `session_crd` parameter. |
+| [PostgreSQL integration step](https://github.com/grootbro/steelkeep/actions/runs/45213244929), `0fee4ab` | 1 test / 202 assertions passed | Disposable PostgreSQL 17; OAuth lifecycle, combined account grants, configure-scoped MCP reuse, owner-only consent/key controls, atomic import, corruption and concurrency. Google transport is synthetic. |
+| [Drive UI step](https://github.com/grootbro/steelkeep/actions/runs/45213914585), `23131af` | UI step passed | Four desktop/mobile light/dark captures, common connection dialog, both roles together, partial-save continuation, one-time claim, catalog retry and owner controls. Google requests are intercepted. Packaging's stale proof-marker check was corrected in the separate release run. |
+| [Release packaging](https://github.com/grootbro/steelkeep/actions/runs/45214431653), `e5de5b8` | Passed | Runtime/frontend inputs matched the qualified UI revision; a 3.9 MB archive with per-file hashes was produced without Docker. |
 
-The existing installation was updated to `58b022e` using the existing image and
-dependencies. Migration 12 and authenticated HTTPS configuration/API/MCP smoke
-checks passed. These checks establish deployment, not a live Google data transfer.
+The existing installation was updated using its existing image and dependencies.
+Migration 13 and authenticated HTTPS configuration/API/MCP checks passed. The
+client-only `60af3f0` correction reused the qualified frontend without rebuilding it;
+the replacement server file and all retained runtime files were hash-checked.
+
+A real internal Workspace account completed native OAuth with both scopes. An actual
+PostgreSQL 17.11 archive (97,381 bytes) and its portable descriptor were published to
+Drive. A complete authenticated HTTPS download through Steelkeep matched an independent
+SHA-256, and the MCP recovery catalog found the published archive. This establishes a
+live storage transfer and catalog, not restoration of that production database.
 
 Mocked Google responses and archive cycles do not establish a live Workspace OAuth
 connection or recovery. No production Google account is contacted by default tests.
-Record any live isolated Drive transfer and recovery proof separately.
+Record additional live file-source and isolated recovery proofs separately.
