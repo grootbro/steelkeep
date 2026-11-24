@@ -52,7 +52,7 @@ jobs:
           curl --fail --silent --show-error --proto '=https' https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/steelkeep-pgdg.asc
           fingerprint=$(gpg --batch --show-keys --with-colons /tmp/steelkeep-pgdg.asc | awk -F: '$1=="fpr" {print $10;exit}')
           test "$fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
-          while IFS= read -r existing; do sudo mv "$existing" "$existing.steelkeep-ci-disabled"; done < <(rg -l 'apt\.postgresql\.org' /etc/apt/sources.list.d || true)
+          while IFS= read -r existing; do sudo mv "$existing" "$existing.steelkeep-ci-disabled"; done < <(grep -rl 'apt\.postgresql\.org' /etc/apt/sources.list.d || true)
           sudo install -m0644 /tmp/steelkeep-pgdg.asc /usr/share/keyrings/steelkeep-pgdg.asc
           printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/steelkeep-pgdg.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main\n' | sudo tee /etc/apt/sources.list.d/steelkeep-pgdg.list >/dev/null
           sudo apt-get update -qq

@@ -51,7 +51,7 @@ try{
    await source.connect();await target.connect();await target.restrictedRestoreRole();assert(await target.empty(),'Direct target is not empty; nothing was reset')
    const file=directory+'/archive.sql',phases:string[]=[];await mkdir(directory+'/capture');await mkdir(directory+'/restore')
    const captured=await source.backup(file,directory+'/capture',signal,async phase=>{phases.push(phase)})
-   const restored=await target.restore(file,directory+'/restore',signal),validation=manifestComparison(captured.manifest,await target.manifest())
+   const restored=await target.restore(file,directory+'/restore',signal,captured.manifest),validation=manifestComparison(captured.manifest,await target.manifest())
    assert(validation.passed,'Native manifest validation failed');const after=await independent(directDb,'restore_writer',directPassword),sourceAfter=await independent(sourceDb,'backup_reader',readerPassword)
    assert(JSON.stringify({projects:after.projects,entries:after.entries,sequence:after.sequence})===sourceRows,'Independent direct restore rows differ')
    assert(JSON.stringify({projects:sourceAfter.projects,entries:sourceAfter.entries,sequence:sourceAfter.sequence})===sourceRows,'Source changed')
