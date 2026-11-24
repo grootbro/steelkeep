@@ -8,6 +8,7 @@ import type {DatabaseConfig,DbSecret} from '../services'
 import {AppError,allowedHost,databaseName} from '../security'
 import {runTool,toolEnv} from '../process'
 import {config as installation} from '../config'
+import {postgresMajor,postgresTools,assertPostgresTool} from './postgres-version'
 
 export type {Engine,Manifest,Identity} from './types'
 import type {Engine,Manifest,Identity} from './types'
@@ -122,7 +123,7 @@ export class DatabaseSession {
       await this.query('SELECT DATABASE() AS name,VERSION() AS version')
     const database=String(row.name),serverVersion=String(row.version)
     if(database!==this.config.database)fail('IDENTITY_UNCERTAIN','The database did not report the configured database name.')
-    if(this.engine==='postgres'&&Number.parseInt(serverVersion)!==17)fail('UNSUPPORTED_VERSION','This release supports PostgreSQL 17 only.')
+    if(this.engine==='postgres')postgresMajor(serverVersion)
     if(this.engine==='mariadb'&&(!serverVersion.toLowerCase().includes('mariadb')||Number.parseInt(serverVersion)!==11))fail('UNSUPPORTED_VERSION','This release supports MariaDB 11 only.')
     if(this.engine==='mysql'&&(serverVersion.toLowerCase().includes('mariadb')||Number.parseInt(serverVersion)!==8))fail('UNSUPPORTED_VERSION','This release supports MySQL 8 only.')
     return {engine:this.engine,database,serverVersion}
@@ -294,10 +295,10 @@ export async function nativeCredentials(engine:Engine,c:DatabaseConfig,s:DbSecre
   return {env:toolEnv(engine==='mysql'?{MYSQL_TEST_LOGIN_FILE:join(dir,'unused-login.cnf')}:{}),args:[`--defaults-file=${path}`]}
 }
 
-export async function nativeVersion(engine:Engine,signal:AbortSignal){
-  const binary=engine==='postgres'?'pg_dump':engine==='mariadb'?'mariadb-dump':'mysqldump'
+export async function nativeVersion(engine:Engine,signal:AbortSignal,serverVersion?:string){
+  const binary=engine==='postgres'?postgresTools(serverVersion??'').dump:engine==='mariadb'?'mariadb-dump':'mysqldump'
   const version=await runTool(binary,['--version'],{env:toolEnv(),signal,capture:true,timeoutMs:10000})
-  if(engine==='postgres'&&!/\b17\./.test(version))fail('UNSUPPORTED_TOOL','The worker requires PostgreSQL 17 client tools.')
+  if(engine==='postgres')assertPostgresTool(version,postgresMajor(serverVersion??''),'dump')
   if(engine==='mariadb'&&(!/mariadb/i.test(version)||!/(?:Distrib |from |Ver )11\./i.test(version)))fail('UNSUPPORTED_TOOL','The worker requires MariaDB 11 client tools.')
   if(engine==='mysql'&&(!/\b8\./.test(version)||/mariadb/i.test(version)))fail('UNSUPPORTED_TOOL','The worker requires a MySQL 8 client for MySQL sources.')
   return {binary,version}

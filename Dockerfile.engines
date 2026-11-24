@@ -59,10 +59,13 @@ RUN set -eu; \
     printf 'deb [arch=%s signed-by=/usr/share/keyrings/mongodb-server-8.0.asc] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse\n' "$TARGETARCH" > /etc/apt/sources.list.d/mongodb.list; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      postgresql-client-17 \
+      postgresql-client-17 postgresql-client-18 \
       "mariadb-client=${MARIADB_CLIENT_VERSION}" \
       "mariadb-client-core=${MARIADB_CLIENT_VERSION}" \
       "mongodb-database-tools=${MONGODB_TOOLS_VERSION}"; \
+    printf '#!/bin/sh\nexec /usr/lib/postgresql/18/bin/pg_dump "$@"\n' > /usr/local/bin/pg_dump18; \
+    printf '#!/bin/sh\nexec /usr/lib/postgresql/18/bin/pg_restore "$@"\n' > /usr/local/bin/pg_restore18; \
+    chmod 0755 /usr/local/bin/pg_dump18 /usr/local/bin/pg_restore18; \
     mkdir -p /usr/share/steelkeep; \
     dpkg-query --show --showformat='${Package}\t${Version}\t${Architecture}\n' > /usr/share/steelkeep/installed-packages.tsv; \
     cp /opt/mysql8/package-metadata.txt /usr/share/steelkeep/mysql-package.txt; \

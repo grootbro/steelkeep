@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      postgres_native_only:
+        description: Qualify PG17 and PG18 native clients on isolated fixtures
+        type: boolean
+        default: false
       source_only:
         description: Recheck TypeScript and unit tests after a test-only correction
         type: boolean
@@ -27,12 +31,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.source_only || false }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.postgres_native_only || inputs.source_only || false }}
   cancel-in-progress: true
 
 jobs:
+  postgres-native:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.postgres_native_only }}
+    uses: ./.github/workflows/postgres-native.yml
+
   source:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.drive_ui_only && !inputs.release_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.drive_ui_only && !inputs.release_only && !inputs.postgres_native_only) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -50,7 +58,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.source_only }}
 
   google-drive:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.release_only && !inputs.source_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.release_only && !inputs.source_only && !inputs.postgres_native_only) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:

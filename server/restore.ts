@@ -18,6 +18,7 @@ import type {Engine,Manifest} from './engines/types'
 import {createEngineAdapter,engineKinds} from './engines'
 import {runControl} from './engines/execution'
 import {resourceKey} from './resources'
+import {assertPostgresRestoreVersion} from './engines/postgres-version'
 
 /** Read-only review. Worker supplies ownRunId to permit only its own durable target block. */
 export async function inspectRestore(services:Services,artifactId:string,targetId:string,ownRunId?:string){
@@ -47,6 +48,7 @@ export async function inspectRestore(services:Services,artifactId:string,targetI
     if(target.kind!=='google_drive')assertProtectedDatabase(identity.database)
     if(identity.database!==targetDatabase)throw new AppError('IDENTITY_UNCERTAIN','The target did not confirm its configured database identity.')
     if(target.kind==='sqlite'&&(!manifest.binding||manifest.binding===identity.binding))throw new AppError('SOURCE_TARGET_CONFLICT','SQLite source and target file identities must be proven distinct.')
+    if(target.kind==='postgres')assertPostgresRestoreVersion(manifest.serverVersion,identity.serverVersion)
     if(target.kind==='redis'&&Number.parseInt(manifest.serverVersion)!==Number.parseInt(identity.serverVersion))throw new AppError('VERSION_MISMATCH','Redis source and target must use the same major version.')
     await session.restrictedRestoreRole()
     if(!await session.empty())throw new AppError('TARGET_NOT_EMPTY','The designated precreated restore target is not empty. No restore data has been applied.')
