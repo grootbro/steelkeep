@@ -84,8 +84,33 @@ test('Drive uploads use the generated ID, immutable ownership properties and bou
  expect(JSON.parse(String(post.init!.body))).toMatchObject({id,name:'sample.txt',parents:[parentId],appProperties,properties})
  const put=calls.filter(call=>call.init?.method==='PUT');expect(put).toHaveLength(2);expect((put[0].init?.body as Blob).size).toBe(4*1024*1024);expect((put[1].init?.body as Blob).size).toBe(3)
  expect(new Headers(put[1].init?.headers).get('content-range')).toBe(`bytes ${4*1024*1024}-${total-1}/${total}`)
- expect(put.every(call=>call.url.origin==='https://www.googleapis.com'&&call.init?.redirect==='error')).toBe(true)
+ expect(post.init?.redirect).toBe('error')
+ expect(put.every(call=>call.url.origin==='https://www.googleapis.com'&&call.init?.redirect==='manual')).toBe(true)
  expect(put.every(call=>call.url.searchParams.get('session_crd')==='synthetic-session-capability'&&call.url.searchParams.get('fields')==='id,name,size')).toBe(true)
+})
+
+test('runtime HTTP 308 continues a Drive upload and a real redirect is never followed',async()=>{
+ const first=4*1024*1024,total=first+3
+ const location='https://www.googleapis.com/upload/drive/v3/files?upload_id=synthetic'
+ const received:Array<{range:string|null;bytes:number}>=[]
+ let redirect=false,pastRedirect=0
+ const server=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){
+  if(new URL(request.url).pathname==='/redirect-target'){pastRedirect++;return new Response('unexpected')}
+  received.push({range:request.headers.get('content-range'),bytes:(await request.arrayBuffer()).byteLength})
+  if(redirect)return new Response(null,{status:308,headers:{location:new URL('/redirect-target',request.url).href,range:`bytes=0-${first-1}`}})
+  if(received.length===1)return new Response(null,{status:308,headers:{range:`bytes=0-${first-1}`}})
+  return json(fixture({size:String(total)}))
+ }})
+ try{
+  const drive=client(async(_input,init)=>init?.method==='POST'?new Response(null,{headers:{location}}):fetch(server.url,init))
+  const input={id,parentId,name:'sample.txt',mimeType:'text/plain',body:new Blob([new Uint8Array(total)])}
+  expect((await drive.uploadFile(input)).size).toBe(String(total))
+  expect(received).toEqual([{range:`bytes 0-${first-1}/${total}`,bytes:first},{range:`bytes ${first}-${total-1}/${total}`,bytes:3}])
+  redirect=true
+  await expect(drive.uploadFile(input)).rejects.toMatchObject({code:'GOOGLE_DRIVE_WRITE_UNCERTAIN'})
+  expect(received).toHaveLength(3)
+  expect(pastRedirect).toBe(0)
+ }finally{server.stop(true)}
 })
 
 test('fresh My Drive folders omit the root alias and require a concrete single-parent response',async()=>{

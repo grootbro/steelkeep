@@ -2,7 +2,7 @@ import {spawn} from 'node:child_process'
 import {open,stat} from 'node:fs/promises'
 import {AppError} from './security'
 
-const tools=new Set(['pg_dump','pg_restore','mysqldump','mysql','mariadb-dump','mariadb','mongodump','mongorestore','sqlite3','dotnet','clickhouse','clickhouse-client'])
+const tools=new Set(['pg_dump','pg_restore','pg_dump18','pg_restore18','mysqldump','mysql','mariadb-dump','mariadb','mongodump','mongorestore','sqlite3','dotnet','clickhouse','clickhouse-client'])
 export const maxArchiveBytes=2*1024*1024*1024
 
 // Do not inherit ambient database passwords, libpq settings or startup files.

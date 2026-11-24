@@ -11,7 +11,7 @@ import './forms.css'
 
 const sourceRequirements:Record<string,string>={
   google_drive:'Google Drive file tree: encrypted portable archive, stable-version checks and independent file-content validation.',
-  postgres:'Use a read-only source role and PostgreSQL 17 worker tools. Changing sequence state during capture is refused.',
+  postgres:'Use a read-only source role and PostgreSQL worker tools matching the source major (17 or 18). Changing sequence state during capture is refused.',
   mysql:'MySQL 8 clients, InnoDB tables and RELOAD permission are required. Views and stored programs are not supported by this profile.',
   mariadb:'Use MariaDB 11 clients, InnoDB tables and RELOAD permission. Views and stored programs are not supported by this profile.',
   mongodb:'MongoDB 8.0 standalone and MongoDB tools are required. The role needs permission for a server-wide fsync lock; replica sets and shards need another profile.',

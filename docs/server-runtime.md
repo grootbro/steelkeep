@@ -24,3 +24,7 @@ After successful checks, fixture containers were removed/stopped and verified se
 This does not turn source-only packaging changes into tested images. The Dockerfile now includes the owner-setup helper and Compose forwards file-root settings; their syntax and source contracts are checked separately. A clean rebuilt all-engine distribution and broader fault/provider/version acceptance remain additional release gates. Hostname allowlists, file mounts and each profile's source/restore privileges still apply; see [engine profiles](engine-profiles.md).
 
 The combined acceptance TypeScript check passed on an immutable copy of the qualified backend plus all seven new native proof scripts: sourceSHA `6ad6d53f8bf2faefb523c14b4d4fe74e30db6e7683bf3dd7231d6d17e19e592b`,293regularfiles unchanged before/after,2GiB/1CPU/networknone, exit0/OOMfalse. Self-host Compose configuration parsed successfully and the owner-helper COPY input was checked to exist. These checks did not build a new distribution image. Synthetic CORE API/worker/Redis were then stopped after all12 core jobs were terminal and source holds were empty; the live installation remained running.
+
+## Separate PostgreSQL18 source/client qualification
+
+The later [PG17/18 native CI checkpoint](server-postgres18.md) passed actual17.12 and18.7 adapter backup/empty-target recovery with matching client families and independent content checks. Its signed-vendor18 client bundle is pinned separately. This CI proof does not change the deployed worker matrix above or establish a live platform18 backup.

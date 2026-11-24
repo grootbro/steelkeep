@@ -13,7 +13,7 @@ The new worker recipe uses Ubuntu 24.04 and the Bun 1.4.0 binary from the offici
 
 | Engine | Tools in this recipe | Additional requirement |
 | --- | --- | --- |
-| PostgreSQL 17 | PGDG `postgresql-client-17` | Isolated source and restricted empty target roles |
+| PostgreSQL 17 / 18 | PGDG `postgresql-client-17` / `postgresql-client-18`; distinct18 wrapper names | Matching-major client/source/target; isolated source and restricted empty target roles. [Separate PG18 qualification and pinned bundle](server-postgres18.md). |
 | MySQL 8 | Ubuntu `mysql-client-core-8.0`, extracted under `/opt/mysql8` | Matching MySQL profile and explicit source-lock permission |
 | MariaDB 11 | Official MariaDB 11.4 `mariadb-client` and `mariadb-client-core` | Matching MariaDB profile and explicit source-lock permission |
 | MongoDB 8 standalone | Official Database Tools **100.20.0** | Fsync-lock opt-in, journal reconciliation, designated target sentinel |
@@ -126,3 +126,5 @@ latest mobile CSS packaged rerun,
 SQL Server runtime on an actual nonproduction x64 runner with operator EULA acceptance,
 remaining engine UI and responsive/accessibility review, and broader adverse cases.
 No volume or restore target was deleted.
+
+The later PostgreSQL18 source/client checkpoint has its own [native CI ledger](server-postgres18.md). It does not retroactively qualify the historical image builds above.
