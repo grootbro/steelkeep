@@ -77,16 +77,22 @@ export class GoogleDriveClient{
  private url(path:string,query:Record<string,string>={}){const url=new URL(api+path);for(const [key,value] of Object.entries(query))url.searchParams.set(key,value);return url}
  private async request(url:URL,init:RequestInit={},accept:number[]=[],timeout=30000){
   const method=init.method??'GET',read=method==='GET',signal=AbortSignal.any([this.options.signal,AbortSignal.timeout(timeout)])
+  // Drive uses HTTP 308 to acknowledge a chunk. Bun's error mode discards that response.
+  const resumableChunk=accept.includes(308)
   let forceRefresh=false
   for(let attempt=0;attempt<3;attempt++){
    signal.throwIfAborted();const token=await this.options.getAccessToken(signal,forceRefresh)
    if(typeof token!=='string'||!token||token.length>8192||/[\r\n\0]/.test(token))throw new AppError('GOOGLE_DRIVE_AUTH_REQUIRED','Reconnect the Google Drive account before continuing.',401)
    let response:Response
-   try{const headers=new Headers(init.headers);headers.set('authorization','Bearer '+token);response=await this.fetch(url,{...init,method,headers,signal,redirect:'error',credentials:'omit',cache:'no-store'})}
+   try{const headers=new Headers(init.headers);headers.set('authorization','Bearer '+token);response=await this.fetch(url,{...init,method,headers,signal,redirect:resumableChunk?'manual':'error',credentials:'omit',cache:'no-store'})}
    catch{
     if(signal.aborted){if(signal.reason instanceof AppError)throw signal.reason;throw new AppError('GOOGLE_DRIVE_CANCELLED','The Google Drive request was cancelled or timed out.',408)}
     if(read&&attempt<2){await pause(250*2**attempt,signal);continue}
     throw new AppError(read?'GOOGLE_DRIVE_UNAVAILABLE':'GOOGLE_DRIVE_WRITE_UNCERTAIN',read?'Google Drive could not complete this read.':'Google Drive did not confirm the write. Reconcile its existing identifier before another operation.',read?503:409)
+   }
+   if(resumableChunk&&response.status>=300&&response.status<400&&(response.status!==308||response.headers.has('location'))){
+    await response.body?.cancel().catch(()=>{})
+    throw new AppError('GOOGLE_DRIVE_WRITE_UNCERTAIN','Google Drive returned an unexpected upload redirect. Reconcile the existing identifier before continuing.',409)
    }
    if(response.ok||accept.includes(response.status))return response
    let rateLimited=response.status===429
