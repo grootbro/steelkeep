@@ -58,7 +58,7 @@ before a restore writes data. Use the dashboard or give a scoped AI agent access
 
 | Engine | Current profile | Capture and prerequisites |
 | --- | --- | --- |
-| PostgreSQL | 17 | Exported snapshot; `pg_dump` / `pg_restore` 17. Sequence changes during capture refuse publication. |
+| PostgreSQL | 17 / 18 | Exported snapshot; exact matching-major clients and restore target. Sequence changes during capture refuse publication. [Qualification](docs/server-postgres18.md). |
 | MySQL | 8.0, ordinary InnoDB tables | Real MySQL 8 clients and an explicitly permitted server-wide read lock. |
 | MariaDB | 11, ordinary InnoDB tables | Separate MariaDB 11 clients and an explicitly permitted server-wide read lock. |
 | MongoDB | 8.0 standalone | Database Tools 100.20; explicitly permitted, journaled server-wide fsync lock. |
