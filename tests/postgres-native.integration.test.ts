@@ -19,7 +19,7 @@ function guard(){
  if(url.protocol!=='postgresql:'||url.hostname!=='127.0.0.1'||url.port!=='55417'||url.pathname!=='/steelkeep_native_ci'||url.username!==actor||url.password!==password||url.search||url.hash)throw new Error('The exact disposable native PostgreSQL fixture is required.')
  if(process.env.STEELKEEP_ALLOWED_HOSTS!=='127.0.0.1')throw new Error('Only loopback fixture databases may participate.')
 }
-const sourceRows=`SELECT id::text,label,encode(payload,'hex') AS payload,document,amount::text,occurred_at::text,tags,state::text FROM public.entries ORDER BY id`
+const sourceRows=`SELECT id::text,label,encode(payload,'hex') AS payload,document,amount::text,occurred_at::text,tags,state::text FROM public.entries ORDER BY public.entries.id`
 for(const major of [17,18])acceptance(`PostgreSQL ${major} native exported snapshot and restricted empty-target recovery preserve independently queried content`,async()=>{
  guard()
  const nonce=randomBytes(8).toString('hex'),sourceName=`native_${major}_source_${nonce}`,targetName=`native_${major}_target_${nonce}`,reader=`reader_${nonce}`,restorer=`restore_${nonce}`,port=major===17?55417:55418,signal=AbortSignal.timeout(120000)
@@ -69,7 +69,8 @@ for(const major of [17,18])acceptance(`PostgreSQL ${major} native exported snaps
   expect((await targetAdmin.query('SELECT nextval(\'public.entries_id_seq\')::text AS n')).rows[0].n).toBe('74')
   expect((await targetAdmin.query('SELECT reporting.increment(9) AS n')).rows[0].n).toBe(10)
   expect((await targetAdmin.query('SELECT label FROM reporting.labels ORDER BY id')).rows).toEqual(before.map(row=>({label:row.label})))
-  const constraints=await targetAdmin.query("SELECT contype,count(*)::integer AS n FROM pg_constraint WHERE connamespace='public'::regnamespace GROUP BY contype ORDER BY contype");expect(constraints.rows).toEqual([{contype:'c',n:1},{contype:'f',n:1},{contype:'p',n:2},{contype:'u',n:1}])
+  const constraints=await targetAdmin.query("SELECT contype,count(*)::integer AS n FROM pg_constraint WHERE connamespace='public'::regnamespace AND contype IN ('c','f','p','u') GROUP BY contype ORDER BY contype");expect(constraints.rows).toEqual([{contype:'c',n:1},{contype:'f',n:1},{contype:'p',n:2},{contype:'u',n:1}])
+  const notNull="SELECT attname,attnotnull FROM pg_attribute WHERE attrelid='public.entries'::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum";expect((await targetAdmin.query(notNull)).rows).toEqual((await sourceAdmin.query(notNull)).rows)
   expect((await sourceAdmin.query(sourceRows)).rows).toEqual(before);expect((await sourceAdmin.query('SELECT last_value::text,is_called FROM public.entries_id_seq')).rows).toEqual(beforeSequence)
   expect((await targetAdmin.query('SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=$1',[restorer])).rows[0]).toEqual({rolname:restorer,rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false,rolbypassrls:false})
   const evidence={major,serverVersion:actual.serverVersion,dumpVersion:capture.toolVersion.trim(),restoreVersion:restored.toolVersion.trim(),archiveBytes:bytes.length,sha256,independentRows:before.length,independentChildren:beforeChildren.length,sequenceNext:'74',validation:comparison.checks,sourceUnchanged:true,crossMajorRefusedBeforeWrite:true,boundary:'Actual native adapters and custom archive, not S3/worker/MCP end-to-end'}
