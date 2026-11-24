@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.postgres_native_only || inputs.source_only || false }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.postgres_native_only && 'postgres-native' || inputs.source_only && 'source' || 'full' }}
   cancel-in-progress: true
 
 jobs:
