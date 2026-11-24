@@ -3,7 +3,7 @@ import {join} from 'node:path'
 import type {DatabaseConfig,DbSecret} from '../services'
 import {AppError} from '../security'
 import {runTool,toolEnv} from '../process'
-import {DatabaseSession,nativeCredentials,nativeVersion,digest} from './database'
+import {DatabaseSession,nativeCredentials,nativeVersion,digest,assertBackupSourceDatabase,assertProtectedDatabase,assertArchivedSourceDatabase} from './database'
 import {postgresTools,assertPostgresTool,assertPostgresRestoreVersion} from './postgres-version'
 import type {AdapterOptions,Engine,EngineAdapter,EnginePhase,Manifest} from './types'
 
@@ -15,6 +15,7 @@ export class NativeAdapter extends DatabaseSession implements EngineAdapter {
     this.archiveExtension=engine==='postgres'?'.dump':'.sql';this.credentials=options.secret as DbSecret
   }
   async backup(file:string,dir:string,signal:AbortSignal,phase:EnginePhase){
+    assertBackupSourceDatabase(this.engine,this.config)
     const identity=await this.identity(),tool=await nativeVersion(this.engine,signal,identity.serverVersion)
     const credentials=await nativeCredentials(this.engine,this.config,this.credentials,dir)
     if(this.engine!=='postgres'&&!this.config.allowGlobalReadLock)throw new AppError('SOURCE_LOCK_OPT_IN','MySQL/MariaDB capture requires explicit permission to hold a global source read lock during backup.')
@@ -38,6 +39,7 @@ export class NativeAdapter extends DatabaseSession implements EngineAdapter {
     return {manifest,toolVersion:tool.version}
   }
   async restore(file:string,dir:string,signal:AbortSignal,expected:Manifest){
+    assertProtectedDatabase(this.config.database);assertArchivedSourceDatabase(this.engine,expected.database)
     const identity=await this.identity()
     if(this.engine==='postgres')assertPostgresRestoreVersion(expected.serverVersion,identity.serverVersion)
     const credentials=await nativeCredentials(this.engine,this.config,this.credentials,dir)

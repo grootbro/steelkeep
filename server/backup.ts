@@ -11,7 +11,7 @@ import {sql} from 'kysely'
 import {Services,storageClient,type StorageConfig,type S3Secret} from './services'
 import {AppError,unseal} from './security'
 import {assertArchiveSize,maxArchiveBytes} from './process'
-import {assertProtectedDatabase} from './engines/database'
+import {assertBackupSourceDatabase} from './engines/database'
 import type {Engine} from './engines/types'
 import {createEngineAdapter,engineKinds} from './engines'
 import {runControl} from './engines/execution'
@@ -49,7 +49,7 @@ export async function executeBackup(services:Services,runId:string,token:string,
   await assertDriveStorageOutsideSource(db,source,storage,signal)
   if(source.config.importedArchive)throw new AppError('INVALID_SOURCE','Imported archive identities cannot capture a new source.')
   const config=source.config,secret=unseal<Record<string,unknown>>(source.secret),engine=source.kind
-  if(engine!=='google_drive')assertProtectedDatabase(String(config.database??''))
+  if(engine!=='google_drive')assertBackupSourceDatabase(engine,config)
   if(config.restoreTarget)throw new AppError('INVALID_SOURCE','A restore target cannot be used as a backup source.')
   const storageConfig=storage.config as StorageConfig
   const session=createBackupAdapter(engine,{config,secret,signal,checkpoint:check,lockHooks:createSourceLockHooks(services,runId,token)},db)

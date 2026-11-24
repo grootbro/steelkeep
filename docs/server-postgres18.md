@@ -73,3 +73,29 @@ image build or production deployment occurred in this agent's qualification lane
 [Official pg_dump18 semantics](https://www.postgresql.org/docs/18/app-pgdump.html),
 [pg_restore18](https://www.postgresql.org/docs/18/app-pgrestore.html), and
 [the PostgreSQL Ubuntu repository](https://www.postgresql.org/download/linux/ubuntu/).
+
+## Application data in the default `postgres` database
+
+Some applications use the literal database name `postgres` for their own tables.
+Capture remains refused by default. An installation administrator can set
+`STEELKEEP_POSTGRES_SOURCE_ALLOWLIST` to comma-separated **exact** endpoints such as
+`db.example.test:5432,other.example.test:6543`. IPv6 entries use
+`[fd00::1]:5432` while the connection host is the unbracketed address. Host spelling,
+case and numeric port must match; there are no wildcard, CIDR, suffix, URL or
+implicit-port matches. The host must also pass `STEELKEEP_ALLOWED_HOSTS`.
+
+The normal self-host Compose forwards this setting to the shared API/worker
+environment; `.env.example` leaves it empty. It permits only a PostgreSQL **source**
+whose exact database name is lowercase `postgres`. The worker and native adapter
+recheck capture policy; a connection field, scoped token or imported source record
+cannot grant this exception. Other system names remain protected. If the metadata
+database itself is named `postgres`, the exception stays disabled, including for
+archived-source admission; metadata-name protection always runs first.
+
+A verified archive may retain `postgres` as its recorded PostgreSQL source name,
+including portable Drive import on an installation whose metadata has another
+name. This does not authorize connecting to or capturing that source. Recovery
+still requires a different precreated empty database under a dedicated restricted
+role. A target named `postgres`, any metadata database name or another protected
+system name remains forbidden. The exception does not change schema, snapshot,
+matching-major, source/target separation or archive-integrity requirements.

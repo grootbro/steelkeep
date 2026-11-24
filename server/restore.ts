@@ -13,7 +13,7 @@ import {Services,storageClient,type StorageConfig,type S3Secret} from './service
 import {AppError,unseal} from './security'
 import {maxArchiveBytes} from './process'
 import {workingDirectory} from './backup'
-import {digest,manifestComparison,assertProtectedDatabase} from './engines/database'
+import {digest,manifestComparison,assertProtectedDatabase,assertArchivedSourceDatabase} from './engines/database'
 import type {Engine,Manifest} from './engines/types'
 import {createEngineAdapter,engineKinds} from './engines'
 import {runControl} from './engines/execution'
@@ -33,7 +33,7 @@ export async function inspectRestore(services:Services,artifactId:string,targetI
   if(!isSourceKind(target.kind)||target.kind!==artifact.engine||source.kind!==artifact.engine||!isStorageKind(storage.kind))throw new AppError('ENGINE_MISMATCH','Source archive and target must use the same supported database engine.')
   const config=target.config,sourceConfig=source.config,targetDatabase=String(config.database??'')
   if(!config.restoreTarget||sourceConfig.restoreTarget)throw new AppError('TARGET_NOT_DESIGNATED','Choose a connection explicitly designated as a restore target.')
-  if(target.kind!=='google_drive'){assertProtectedDatabase(targetDatabase);assertProtectedDatabase(manifest.database)}
+  if(target.kind!=='google_drive'){assertProtectedDatabase(targetDatabase);assertArchivedSourceDatabase(artifact.engine,manifest.database)}
   if(sourceConfig.database!==manifest.database)throw new AppError('IDENTITY_UNCERTAIN','Source configuration differs from the identity recorded in this archive.')
   // Different DB names prove distinct databases even through aliases of one server.
   // Equal names on different hosts remain ambiguous and are deliberately refused.

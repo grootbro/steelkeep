@@ -2,6 +2,7 @@ import {isStorageKind,isSourceKind} from '../shared/connections'
 import {storageClient,openStoredArchive,storedHead,driveClient,assertDriveStorageOutsideSource,type StorageConfig,type S3Secret} from './storage'
 import {GoogleDriveOAuth} from './google-drive/oauth'
 import {createBackupAdapter} from './source-adapter'
+import {assertBackupSourceDatabase} from './engines/database'
 export {storageClient,type StorageConfig,type S3Secret} from './storage'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
@@ -158,6 +159,7 @@ export class Services {
    if(!/^[a-zA-Z_][a-zA-Z0-9_.@-]{0,79}$/.test(input.user))throw new AppError('INVALID_CONNECTION','Invalid database user.')
    const ports={postgres:5432,mysql:3306,mariadb:3306,mongodb:27017,mssql:1433,clickhouse:input.tls===false?8123:8443}
    safe={engine:input.kind,host:input.host,port:input.port??ports[input.kind],database:input.database,user:input.user,tls:input.tls??true,restoreTarget:input.restoreTarget??false}
+   if(input.kind==='postgres'&&input.database.toLowerCase()==='postgres')assertBackupSourceDatabase(input.kind,safe)
    if(input.kind==='mongodb'){const authDatabase=input.authDatabase??'admin';databaseName(authDatabase);safe.authDatabase=authDatabase;safe.allowGlobalReadLock=input.allowGlobalReadLock??false}
    if(input.kind==='mysql'||input.kind==='mariadb')safe.allowGlobalReadLock=input.allowGlobalReadLock??false
    if(input.kind==='clickhouse'){

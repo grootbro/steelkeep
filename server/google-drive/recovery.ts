@@ -8,7 +8,7 @@ import {isDeepStrictEqual} from 'node:util'
 import {sql,type Kysely} from 'kysely'
 import type {Schema} from '../db'
 import type {Manifest} from '../engines/types'
-import {assertProtectedDatabase} from '../engines/database'
+import {assertArchivedSourceDatabase} from '../engines/database'
 import {workingDirectory} from '../backup'
 import {maxArchiveBytes} from '../process'
 import {AppError,seal} from '../security'
@@ -52,7 +52,7 @@ export function parsePortableArchive(value:unknown):PortableArchive{
  object(manifest.objects);object(manifest.data);object(manifest.sequences);validateManifestTree(manifest)
  if(manifest.binding!==undefined)text(manifest.binding)
  if(engine==='google_drive')driveId(sourceDatabase)
- else assertProtectedDatabase(sourceDatabase)
+ else assertArchivedSourceDatabase(engine,sourceDatabase)
  const createdAt=text(row.createdAt,64);if(!Number.isFinite(Date.parse(createdAt)))throw invalid()
  return {format:'steelkeep-recovery-v1',artifactId:uuid(row.artifactId),engine,sourceDatabase,serverVersion:text(row.serverVersion,512),toolVersion:text(row.toolVersion,512),manifest:manifest as Manifest,size:size(row.size),sha256:sha(row.sha256),createdAt,archiveFileId:driveId(text(row.archiveFileId,200)),filename:text(row.filename,1024)}
 }

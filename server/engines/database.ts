@@ -1,4 +1,5 @@
 import pg from 'pg'
+import {isIP} from 'node:net'
 import mysql,{type RowDataPacket,type Connection} from 'mysql2/promise'
 import {writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
@@ -69,6 +70,26 @@ export function metadataDatabase(){
 }
 export function assertProtectedDatabase(name:string){
   if(!name||[metadataDatabase(),'postgres','template0','template1','mysql','information_schema','performance_schema','sys','admin','config','local','system','master','model','msdb','tempdb'].includes(name.toLowerCase()))fail('PROTECTED_DATABASE','System and Steelkeep metadata databases cannot participate in this operation.')
+}
+
+/** Capture exception is installation configuration, never a connection/token permission. */
+export function assertBackupSourceDatabase(engine:string,c:{database?:unknown;host?:unknown;port?:unknown;restoreTarget?:unknown;importedArchive?:unknown}){
+  const name=String(c.database??'')
+  if(engine==='postgres'&&name==='postgres'&&c.restoreTarget!==true&&c.importedArchive!==true&&metadataDatabase()!=='postgres'){
+    const {host,port}=c
+    const dns=/^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/
+    if(typeof host==='string'&&(isIP(host)!==0||dns.test(host))&&typeof port==='number'&&Number.isInteger(port)&&port>=1&&port<=65535){
+      const endpoint=(host.includes(':')?'['+host+']':host)+':'+port
+      if((process.env.STEELKEEP_POSTGRES_SOURCE_ALLOWLIST??'').split(',').map(value=>value.trim()).includes(endpoint)){allowedHost(host);return}
+    }
+  }
+  assertProtectedDatabase(name)
+}
+
+/** An archived source identity is not authority to connect to or capture that database. */
+export function assertArchivedSourceDatabase(engine:string,name:string){
+  if(engine==='postgres'&&name==='postgres'&&metadataDatabase()!=='postgres')return
+  assertProtectedDatabase(name)
 }
 
 export class DatabaseSession {

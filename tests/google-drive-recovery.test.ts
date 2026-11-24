@@ -56,3 +56,19 @@ test('portable archive import hashes all bytes before acceptance and bounds priv
   expect(closed).toBe(5)
  }finally{await rm(root,{recursive:true,force:true})}
 })
+
+test('portable postgres-source descriptors remain source-only and cannot bypass metadata protection',()=>{
+ const previous=process.env.DATABASE_URL,override=process.env.STEELKEEP_POSTGRES_SOURCE_ALLOWLIST
+ delete process.env.STEELKEEP_POSTGRES_SOURCE_ALLOWLIST
+ process.env.DATABASE_URL='postgresql://synthetic@127.0.0.1/steelkeep_unit_metadata'
+ const portable={...descriptor,sourceDatabase:'postgres',manifest:{...manifest,database:'postgres'}}
+ try{
+  const parsed=parsePortableArchive(JSON.parse(JSON.stringify(portable)))
+  expect(parsed.sourceDatabase).toBe('postgres');expect(parsed.manifest.database).toBe('postgres')
+  expect(parsed).not.toHaveProperty('host');expect(parsed).not.toHaveProperty('restoreTarget');expect(parsed).not.toHaveProperty('sourceAllowlist')
+  for(const name of ['steelkeep_unit_metadata','template0','template1','POSTGRES'])expect(()=>parsePortableArchive({...portable,sourceDatabase:name,manifest:{...manifest,database:name}})).toThrow()
+  expect(()=>parsePortableArchive({...portable,engine:'mysql',manifest:{...manifest,engine:'mysql',database:'postgres'}})).toThrow()
+  process.env.DATABASE_URL='postgresql://synthetic@127.0.0.1/postgres'
+  expect(()=>parsePortableArchive(portable)).toThrow()
+ }finally{if(previous===undefined)delete process.env.DATABASE_URL;else process.env.DATABASE_URL=previous;if(override===undefined)delete process.env.STEELKEEP_POSTGRES_SOURCE_ALLOWLIST;else process.env.STEELKEEP_POSTGRES_SOURCE_ALLOWLIST=override}
+})
